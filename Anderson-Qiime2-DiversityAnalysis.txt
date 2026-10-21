@@ -1,0 +1,662 @@
+# KAT ANDERSON AVITI SEQUENCE ANALYSIS WITH QIIME2 PIPELINE
+# Code is written for a Windows Subsystem for Linux (WSL) environment
+# Paired with .YAML files for use with National Research Platform (NRP)
+# Updated 2026: QIIME2 2026.7, conda 26.5.3, WSL 2.7.8.0
+
+#-------------------------------------------------------------#
+#-------------------- PREPPING WORKSPACE ---------------------#
+#-------------------------------------------------------------#
+
+## Deploy pod to do your work: 'pod-qiime2.yaml'
+kubectl create -f pod-qiime2.yaml
+kubectl get pods
+
+## Enter pod
+kubectl exec -it qiime2-pod -- /bin/bash
+cd /biovol
+
+## Install nano
+conda install conda-forge::nano
+
+## Delete pod after session
+kubectl delete pod qiime2-pod
+
+## Current data
+#Taxonomy (FeatureData[Taxonomy]): Feature ID, Frequency, Taxonomy, No. of Samples Observed In, Sequence Length, Sequence (export is Feature ID, Taxon, Confidence)
+  #  asvs_taxaUNITE_unclst_single.qza
+  #  asvs_taxaUNITE_sgl_6mo.qza
+  #  asvs_taxaUNITE_sgl_12mo.qza
+#Table (FeatureTable[Frequency]): OTU ID, 10B1 (freq), 10C1 (freq)...
+  #  table_pdecon_unclst_noctl.qza
+  #  table_pdecon_unclst_noctl_6mo.qza
+  #  table_pdecon_unclst_noctl_12mo.qza
+#Metadata: SampleID, Site, CollectMonth, Treatment, TmntPair...
+  #  metadata_noctl.tsv
+
+
+#-------------------------------------------------------#
+#------------------ FUNGAL TRAITS ----------------------#
+#-------------------------------------------------------#
+
+## Download q2-fungal-traits
+conda env create --name q2-fungal-traits-qiime2-2026.4 --file https://raw.githubusercontent.com/bokulich-lab/q2-fungal-traits/refs/heads/main/environment-files/q2-fungal-traits-qiime2-amplicon-2026.4.yml
+conda activate q2-fungal-traits-qiime2-2026.4
+
+## Fungal trait annotation (genus + phylum)
+qiime fungal-traits annotate \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --o-fungal-traits fungal_traits.qza
+qiime metadata tabulate \
+  --m-input-file fungal_traits.qza \
+  --o-visualization fungal_traits.qzv
+conda deactivate
+
+## Download genus table
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/fungal_traits.qzv fungal_traits.qzv
+
+## Export fungal traits for viewing (feat-id, taxon, confidence, traits)
+qiime tools export \
+  --input-path fungal_traits.qza \
+  --output-path export-R/traits
+
+## Download trait metadata (feature-id, taxon, confidence, fungal_traits_genus, primary_lifestyle...)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/traits/metadata.tsv export-R/traits/fungal_traits.tsv
+
+## Add sequences to fungal traits and table
+nano export-R/table/feature-table.tsv #"FEATURE ID"
+qiime feature-table tabulate-seqs \
+  --i-data asvs_pdecon_unclst_noctl.qza \
+  --m-metadata-file fungal_traits.qza \
+  --m-metadata-file export-R/table/feature-table.tsv \
+  --o-visualization asvs_pdecon_traits.qzv
+
+## Download trait-seqs metadata (feature-id, taxon, confidence, fungal_traits_genus, primary_lifestyle...)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecon_traits.qzv asvs_pdecon_traits.qzv
+
+## NOTE:
+# fungal_traits (ImmutableMetadata) has feature-id, taxon, confidence, functional data...
+
+
+#----------------------------------------------------------#
+#--------- EXPORT ASV FREQ TABLE W/ TAXONOMY --------------#
+#----------------------------------------------------------#
+
+## Export ASV frequency table (feature-table.biom)
+qiime tools export \
+  --input-path table_pdecon_unclst_noctl.qza \
+  --output-path export-R/freq-table
+
+## Replace header of taxonomy-trait table so that the tables match
+nano export-R/traits/metadata.tsv            # "feature-id  taxon confidence" -> "#OTU ID  taxonomy  confidence"
+
+## Add metadata to the ASV table
+biom add-metadata \
+ -i export-R/freq-table/feature-table.biom \
+ -o export-R/freq-table/feat_freq_taxonomy.biom \
+ --observation-metadata-fp export-R/traits/metadata.tsv \
+ --sc-separated taxonomy
+
+## Convert biom to tsv
+biom convert \
+  -i export-R/freq-table/feat_freq_taxonomy.biom \
+  -o export-R/freq-table/feat_freq_taxonomy.tsv \
+  --to-tsv \
+  --process-obs-metadata taxonomy \
+  --header-key taxonomy
+
+## Download biom file to read in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq_taxonomy.tsv ./export-R/freq-table/feat_freq_taxonomy.tsv
+
+## NOTE:
+# the conversion from biome ability in R is very poor considering you can only choose ONE header
+# from the input metadata file to be included in the tsv. It's getter to merge datasets in R.
+
+#-------------------------------------------------------#
+#------------ ANCOM DIFFERENTIAL ABUNDANCE -------------#
+#-------------------------------------------------------#
+
+## Calculate differential abundance for entire study
+qiime composition ancombc2 \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --p-fixed-effects-formula 'Treatment' \
+  --p-group 'Site-Time' \
+  --o-ancombc2-output ancom_pdecon_unclst.qza
+qiime composition da-barplot \
+  --i-data ancom_pdecon_unclst.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --o-visualization ancom_barplot_pdecon_unclst.qzv
+
+## Calculate differential abundance for 6mo post-fire
+qiime composition ancombc2 \
+  --i-table table_pdecon_unclst_noctl_6mo.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --p-fixed-effects-formula 'Treatment' \
+  --p-group 'Site' \
+  --o-ancombc2-output ancom_6mo_pdecon_unclst.qza
+qiime composition da-barplot \
+  --i-data ancom_6mo_pdecon_unclst.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --o-visualization ancom_barplot_6mo_pdecon_unclst.qzv
+
+## Calculate differential abundance for 12mo post-fire
+qiime composition ancombc2 \
+  --i-table table_pdecon_unclst_noctl_12mo.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --p-fixed-effects-formula 'Treatment' \
+  --p-group 'Site' \
+  --o-ancombc2-output ancom_12mo_pdecon_unclst.qza
+qiime composition da-barplot \
+  --i-data ancom_12mo_pdecon_unclst.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --o-visualization ancom_barplot_12mo_pdecon_unclst.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/ancom_barplot_pdecon_unclst.qzv ancom_barplot_pdecon_unclst.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/ancom_barplot_6mo_pdecon_unclst.qzv ancom_barplot_6mo_pdecon_unclst.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/ancom_barplot_12mo_pdecon_unclst.qzv ancom_barplot_12mo_pdecon_unclst.qzv
+
+## NOTES:
+# Since I am comparing the abundance between RxF and NoRxF and I have replicates at each site that
+# need to be accounted for, I chousl group by Site and look at the effect of Treatment for each
+# time point (6 and 12 mo).
+
+
+#-------------------------------------------------------#
+#------------------- HEAT MAP --------------------------#
+#-------------------------------------------------------#
+
+## Group data by Site, Time, Treatment
+qiime feature-table group \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --p-axis sample \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-column Tmnt-Site-Time \
+  --p-mode sum \
+  --o-grouped-table Heatmap/tmnt_site_time_table.qza
+
+## Collapse into Order
+qiime taxa collapse \
+  --i-table Heatmap/tmnt_site_time_table.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --p-level 3 \
+  --o-collapsed-table Heatmap/order_grouped.qza
+
+## Generate heat map
+qiime feature-table heatmap \
+  --i-table Heatmap/order_grouped.qza \
+  --p-color-scheme coolwarm \
+  --o-visualization Heatmap/heatmap_site.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/heatmap_site.qzv heatmap_site.qzv
+
+
+#-------------------------------------------------------#
+#---------------- EXPORT FREQ TABLES -------------------#
+#-------------------------------------------------------#
+
+## Export Rarefied table (feat-ID, Counts)
+qiime tools export \
+  --input-path core-metrics-results/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_full.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-6mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_6mo.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-12mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_12mo.tsv \
+  --to-tsv
+
+## Export freq tables
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq.tsv export-R/freq-table/feat_freq.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_full.tsv export-R/freq-table/rarified_feat_freq_full.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_6mo.tsv export-R/freq-table/rarified_feat_freq_6mo.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_12mo.tsv export-R/freq-table/rarified_feat_freq_12mo.tsv
+
+
+#-----------------------------------------------------#
+#---------------- ALPHA RAREFACTION ------------------#
+#-----------------------------------------------------#
+
+## Graph diversity as a function of sampling depth, full study
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst.qzv
+
+## Graph diversity as a function of sampling depth, 6mo
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl_6mo.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst_6mo.qzv
+
+## Graph diversity as a function of sampling depth, 12mo
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl_12mo.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst_12mo.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_6mo.qzv alpha_rrfctn_pdecon_unclst_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_12mo.qzv alpha_rrfctn_pdecon_unclst_12mo.qzv
+
+## NOTE:
+# Shannon diversity levels out at quickly, oberved feats levels out at 6222.
+# Sampling depth will be 6222.
+
+
+#----------------------------------------------------#
+#---------------- DIVERSITY METRICS -----------------#
+#----------------------------------------------------#
+
+## Calculate diversity metrics on rareified samples
+qiime diversity core-metrics \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --p-sampling-depth 6222 \
+  --p-no-with-replacement \
+  --p-random-seed 8192026 \
+  --m-metadata-file metadata_noctl.tsv \
+  --output-dir core-metrics-results
+qiime diversity core-metrics \
+  --i-table table_pdecon_unclst_noctl_6mo.qza \
+  --p-sampling-depth 6222 \
+  --p-no-with-replacement \
+  --p-random-seed 8192026 \
+  --m-metadata-file metadata_noctl.tsv \
+  --output-dir core-metrics-results-6mo
+qiime diversity core-metrics \
+  --i-table table_pdecon_unclst_noctl_12mo.qza \
+  --p-sampling-depth 6222 \
+  --p-no-with-replacement \
+  --p-random-seed 8192026 \
+  --m-metadata-file metadata_noctl.tsv \
+  --output-dir core-metrics-results-12mo
+
+## Get sample and feature seq freq and summary stats
+qiime feature-table summarize \
+  --i-table core-metrics-results/rarefied_table.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-feature-frequencies feat_freq_rarefied.qza \
+  --o-sample-frequencies smpl_freq_rarefied.qza \
+  --o-summary rarefied_table.qzv
+
+## Download summary
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/rarefied_table.qzv rarefied_table.qzv
+
+## Export Rarefied frequency table as .tsv (feat-ID, Counts)
+qiime tools export \
+  --input-path core-metrics-results/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_full.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-6mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_6mo.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-12mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_12mo.tsv \
+  --to-tsv
+
+## Download the tsv files
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_full.tsv rarified_feat_freq_full.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_6mo.tsv rarified_feat_freq_6mo.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_12mo.tsv rarified_feat_freq_12mo.tsv
+
+## Explore alpha diversity (whole study)
+# graphically/statistically compare features observed in each community
+# shannon is 𝐻′= −∑𝑖=1(𝑝𝑖⁢log𝑏⁡(𝑝𝑖))  w/ 𝑆 above ∑
+# eveness is Pielou's evenness, 𝐽′=(𝐻)/log⁡(𝑆)
+# obsv feat are feature counts per sample
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/shannon_vector.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization core-metrics-results/shannon_vector_group_significance.qzv
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/evenness_vector.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization core-metrics-results/evenness_group_significance.qzv
+qiime diversity alpha-group-significance \
+  --i-alpha-diversity core-metrics-results/observed_features_vector.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization core-metrics-results/observed_feat_group_significance.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results/shannon_vector_group_significance.qzv shannon_vector_group_significance.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results/evenness_group_significance.qzv evenness_group_significance.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results/observed_feat_group_significance.qzv observed_feat_group_significance.qzv
+
+## Explore beta diversity (broken by time points)
+# graphically/statistically compare microbial composition between samples
+# Jacard is how many shared microbes b/t samples
+# Bray Curtis is eveness between the samples
+# Question: Does diversity differ between treatments for each pair (TmntPairMonth, ex: NoRxFPairYJan vs RxFPairYJan)?
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results-6mo/jaccard_distance_matrix.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-column TmntPairMonth \
+  --p-method permanova \
+  --p-pairwise \
+  --o-visualization core-metrics-results-6mo/jaccard_distance_matrix_tmntprmo.qzv
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results-6mo/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-column TmntPairMonth \
+  --o-visualization core-metrics-results-6mo/bray_curtis_distance_matrix_tmntprmo.qzv \
+  --p-pairwise
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results-12mo/jaccard_distance_matrix.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-column TmntPairMonth \
+  --o-visualization core-metrics-results-12mo/jaccard_distance_matrix_tmntprmo.qzv \
+  --p-pairwise
+qiime diversity beta-group-significance \
+  --i-distance-matrix core-metrics-results-12mo/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-column TmntPairMonth \
+  --o-visualization core-metrics-results-12mo/bray_curtis_distance_matrix_tmntprmo.qzv \
+  --p-pairwise
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/jaccard_distance_matrix_tmntprmo.qzv jaccard_distance_matrix_6mo_pwnova.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/bray_curtis_distance_matrix_tmntprmo.qzv bray_curtis_distance_matrix_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/jaccard_distance_matrix_tmntprmo.qzv jaccard_distance_matrix_12mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/bray_curtis_distance_matrix_tmntprmo.qzv bray_curtis_distance_matrix_12mo.qzv
+
+## View emporer plots using umap instead of default pcoa
+qiime diversity umap \
+  --i-distance-matrix core-metrics-results-6mo/bray_curtis_distance_matrix.qza \
+  --o-umap core-metrics-results-6mo/bray_curtis_umap.qza
+qiime emperor plot \
+  --i-pcoa core-metrics-results-6mo/bray_curtis_umap.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/bray_curtis_umap_results.qzv
+qiime diversity umap \
+  --i-distance-matrix core-metrics-results-12mo/bray_curtis_distance_matrix.qza \
+  --o-umap core-metrics-results-12mo/bray_curtis_umap.qza
+qiime emperor plot \
+  --i-pcoa core-metrics-results-12mo/bray_curtis_umap.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/bray_curtis_umap_results.qzv
+qiime diversity umap \
+  --i-distance-matrix core-metrics-results-6mo/jaccard_distance_matrix.qza \
+  --o-umap core-metrics-results-6mo/jaccard_umap.qza
+qiime emperor plot \
+  --i-pcoa core-metrics-results-6mo/jaccard_umap.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/jaccard_umap_results.qzv
+qiime diversity umap \
+  --i-distance-matrix core-metrics-results-12mo/jaccard_distance_matrix.qza \
+  --o-umap core-metrics-results-12mo/jaccard_umap.qza
+qiime emperor plot \
+  --i-pcoa core-metrics-results-12mo/jaccard_umap.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/jaccard_umap_results.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/jaccard_umap_results.qzv jaccard_umap_results_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/bray_curtis_umap_results.qzv bray_curtis_umap_results_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/jaccard_umap_results.qzv jaccard_umap_results_12mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/bray_curtis_umap_results.qzv bray_curtis_umap_results_12mo.qzv
+
+## Add beta diversity metrics to metadata
+qiime metadata tabulate \
+  --m-input-file metadata_noctl.tsv \
+  --m-input-file core-metrics-results-6mo/bray_curtis_umap.qza \
+  --m-input-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-input-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-input-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/metadata_expanded_bc.qzv
+qiime metadata tabulate \
+  --m-input-file metadata_noctl.tsv \
+  --m-input-file core-metrics-results-6mo/jaccard_umap.qza \
+  --m-input-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-input-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-input-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/metadata_expanded_jc.qzv
+## Add beta diversity metrics to metadata
+qiime metadata tabulate \
+  --m-input-file metadata_noctl.tsv \
+  --m-input-file core-metrics-results-12mo/bray_curtis_umap.qza \
+  --m-input-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-input-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-input-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/metadata_expanded_bc.qzv
+qiime metadata tabulate \
+  --m-input-file metadata_noctl.tsv \
+  --m-input-file core-metrics-results-12mo/jaccard_umap.qza \
+  --m-input-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-input-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-input-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/metadata_expanded_jc.qzv
+
+## Create barplots
+qiime taxa barplot \
+  --i-table core-metrics-results-6mo/rarefied_table.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-6mo/bray_curtis_umap.qza \
+  --m-metadata-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/barplots_bc_umap.qzv
+qiime taxa barplot \
+  --i-table core-metrics-results-12mo/rarefied_table.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-12mo/bray_curtis_umap.qza \
+  --m-metadata-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/barplots_bc_umap.qzv
+qiime taxa barplot \
+  --i-table core-metrics-results-6mo/rarefied_table.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-6mo/jaccard_umap.qza \
+  --m-metadata-file core-metrics-results-6mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-6mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-6mo/barplots_jac_umap.qzv
+qiime taxa barplot \
+  --i-table core-metrics-results-12mo/rarefied_table.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --m-metadata-file core-metrics-results-12mo/jaccard_umap.qza \
+  --m-metadata-file core-metrics-results-12mo/shannon_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/evenness_vector.qza \
+  --m-metadata-file core-metrics-results-12mo/observed_features_vector.qza \
+  --o-visualization core-metrics-results-12mo/barplots_jac_umap.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/metadata_expanded_bc.qzv metadata_expanded_bc_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/metadata_expanded_bc.qzv metadata_expanded_bc_12mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/metadata_expanded_jc.qzv metadata_expanded_jc_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/metadata_expanded_jc.qzv metadata_expanded_jc_12mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/barplots_jac_umap.qzv barplots_jac_umap_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-6mo/barplots_bc_umap.qzv barplots_bc_umap_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/barplots_jac_umap.qzv barplots_jac_umap_12mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/core-metrics-results-12mo/barplots_bc_umap.qzv barplots_bc_umap_12mo.qzv
+
+## NOTE:
+Who is more abundant? can sort by diversity metric and click just one smecpies.
+
+
+#-------------------------------------------------------#
+#------------- EXPORT DIVERSITY ARTIFACTS --------------#
+#-------------------------------------------------------#
+
+## Export alpha diversity artifacts
+qiime tools export \
+  --input-path core-metrics-results/shannon_vector.qza \
+  --output-path export-R/shannon
+qiime tools export \
+  --input-path core-metrics-results/evenness_vector.qza \
+  --output-path export-R/eveness
+qiime tools export \
+  --input-path core-metrics-results/observed_features_vector.qza \
+  --output-path export-R/observed-features
+
+## Export beta diversity artifacts
+qiime tools export \
+  --input-path core-metrics-results/bray_curtis_distance_matrix.qza \
+  --output-path export-R/bray-distance
+qiime tools export \
+  --input-path core-metrics-results/bray_curtis_umap.qza \
+  --output-path export-R/bray-umap
+qiime tools export \
+  --input-path core-metrics-results/jaccard_distance_matrix.qza \
+  --output-path export-R/jaccard-distance
+qiime tools export \
+  --input-path core-metrics-results/jaccard_umap.qza \
+  --output-path export-R/jaccard-umap
+
+## Collapse taxa to phylum, family, and genus lvl
+qiime taxa collapse \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --p-level 2 \
+  --o-collapsed-table phylum.qza
+qiime taxa collapse \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --p-level 5 \
+  --o-collapsed-table family.qza
+qiime taxa collapse \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --p-level 6 \
+  --o-collapsed-table genus.qza
+
+## Convert taxa to relative abundance
+qiime feature-table relative-frequency --i-table phylum.qza --o-relative-frequency-table phylum_rel.qza
+qiime feature-table relative-frequency --i-table family.qza --o-relative-frequency-table family_rel.qza
+qiime feature-table relative-frequency --i-table genus.qza  --o-relative-frequency-table genus_rel.qza
+
+## Export relative abundances
+qiime tools export --input-path phylum_rel.qza --output-path export-R/phylum
+qiime tools export --input-path family_rel.qza --output-path export-R/family
+qiime tools export --input-path genus_rel.qza  --output-path export-R/genus
+
+## Convert BIOM to TSV
+biom convert -i export-R/phylum/feature-table.biom -o export-R/phylum/feature-table.tsv --to-tsv
+biom convert -i export-R/family/feature-table.biom -o export-R/family/feature-table.tsv --to-tsv
+biom convert -i export-R/genus/feature-table.biom  -o export-R/genus/feature-table.tsv  --to-tsv
+
+## Copy metadata to export folder
+cp metadata_noctl.tsv export-R/
+
+## Download export file
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/ ./export-R/
+
+
+#################################################################################
+ADD TAXONOMY TO RAREFIED OTU TABLES FOR FURTHER ANALYSES OUTSIDE OF QIIME
+#################################################################################
+
+## Export rarefied ASV table for full study (feature-table.biom)
+qiime tools export \
+  --input-path table_pdecon_unclst_noctl.qza \
+  --output-path export-R/asv-table
+mv export-R/asv-table/feature-table.biom export-R/asv-table/feature-table-full.biom
+nano export-R/asv-table/feature-table-full.biom
+
+## Export rarefied ASV table for 6mo
+qiime tools export \
+  --input-path table_pdecon_unclst_noctl_6mo.qza \
+  --output-path export-R/asv-table
+mv export-R/asv-table/feature-table.biom export-R/asv-table/feature-table-6mo.biom
+nano export-R/asv-table/feature-table-6mo.biom
+
+## Export rarefied ASV table for 12mo
+qiime tools export \
+  --input-path table_pdecon_unclst_noctl_12mo.qza \
+  --output-path export-R/asv-table
+mv export-R/asv-table/feature-table.biom export-R/asv-table/feature-table-12mo.biom
+nano export-R/asv-table/feature-table-12mo.biom
+
+## Add metadata to the ASV tables
+biom add-metadata \
+ -i export-R/asv-table/feature-table-full.biom \
+ -o export-R/asv-table/feat_table_taxon_full.biom \
+ --observation-metadata-fp export-R/taxonomy/taxonomy.tsv \
+ --sc-separated taxonomy
+biom add-metadata \
+ -i export-R/asv-table/feature-table-6mo.biom \
+ -o export-R/asv-table/feat_table_taxon_6mo.biom \
+ --observation-metadata-fp export-R/taxonomy/taxonomy.tsv \
+ --sc-separated taxonomy
+biom add-metadata \
+ -i export-R/asv-table/feature-table-12mo.biom \
+ -o export-R/asv-table/feat_table_taxon_12mo.biom \
+ --observation-metadata-fp export-R/taxonomy/taxonomy.tsv \
+ --sc-separated taxonomy
+
+## Convert .biom to .tsv
+biom convert \
+  -i export-R/asv-table/feat_table_taxon_full.biom \
+  -o export-R/asv-table/feat_table_taxon_full.tsv \
+  --to-tsv \
+  --process-obs-metadata taxonomy \
+  --header-key taxonomy
+biom convert \
+  -i export-R/asv-table/feat_table_taxon_6mo.biom \
+  -o export-R/asv-table/feat_table_taxon_6mo.tsv \
+  --to-tsv \
+  --process-obs-metadata taxonomy \
+  --header-key taxonomy
+biom convert \
+  -i export-R/asv-table/feat_table_taxon_12mo.biom \
+  -o export-R/asv-table/feat_table_taxon_12mo.tsv \
+  --to-tsv \
+  --process-obs-metadata taxonomy \
+  --header-key taxonomy
+
+## Replace header of taxonomy-trait table so that it doesn't freak out in R
+nano export-R/asv-table/feat_table_taxon_full.tsv
+nano export-R/asv-table/feat_table_taxon_6mo.tsv
+nano export-R/asv-table/feat_table_taxon_12mo.tsv
+
+## Copy metadata to folder
+cp metadata_noctl.tsv export-R/asv-table/metadata_noctl.tsv
+
+## Download folder of .tsv to read in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/asv-table ./export-R/asv-table
