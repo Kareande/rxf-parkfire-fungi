@@ -426,9 +426,9 @@ write_delim(traits_12mo, "asv_traits_12mo.tsv", delim = "\t")
 write_delim(traits_12mo, "asv_traits_12mo.csv", delim = ",")
 
 
-https://cran.r-project.org/web/packages/stringr/vignettes/regular-expressions.html
-https://www.rdocumentation.org/packages/DT/versions/0.34.0/topics/datatable
-https://github.com/bioc/ANCOMBC
-https://github.com/bioc/ANCOMBC/blob/devel/R/ancombc2.R
-https://bioconductor.org/packages//release/bioc/vignettes/ANCOMBC/inst/doc/ANCOMBC2.html
-https://bioc.r-universe.dev/ANCOMBC/doc/manual.html
+#https://cran.r-project.org/web/packages/stringr/vignettes/regular-expressions.html
+#https://www.rdocumentation.org/packages/DT/versions/0.34.0/topics/datatable
+#https://github.com/bioc/ANCOMBC
+#https://github.com/bioc/ANCOMBC/blob/devel/R/ancombc2.R
+#https://bioconductor.org/packages//release/bioc/vignettes/ANCOMBC/inst/doc/ANCOMBC2.html
+#https://bioc.r-universe.dev/ANCOMBC/doc/manual.html
