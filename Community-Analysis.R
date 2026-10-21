@@ -347,13 +347,13 @@ nrow(asvs_12mo) #3134
 nrow(asvs_6mo) + nrow(asvs_12mo) #5315
 
 
-https://forum.qiime2.org/t/tutorial-integrating-qiime2-and-r-for-data-visualization-and-analysis-using-qiime2r/4121
-https://bioconductor.org/packages//release/bioc/html/biomformat.html
-https://biom-format.org/documentation/biom_conversion.html
+#https://forum.qiime2.org/t/tutorial-integrating-qiime2-and-r-for-data-visualization-and-analysis-using-qiime2r/4121
+#https://bioconductor.org/packages//release/bioc/html/biomformat.html
+#https://biom-format.org/documentation/biom_conversion.html
 
 #where our results were driven by a pair of features that were only detectable with ASVs
-https://forum.qiime2.org/t/differential-abundance-da-analysis-before-or-after-feature-table-collapse-to-a-specific-taxonomical-level/17682/3
-https://journals.asm.org/doi/10.1128/msystems.00065-20
+#https://forum.qiime2.org/t/differential-abundance-da-analysis-before-or-after-feature-table-collapse-to-a-specific-taxonomical-level/17682/3
+#https://journals.asm.org/doi/10.1128/msystems.00065-20
 
 
 
