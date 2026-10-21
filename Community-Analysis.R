@@ -12,6 +12,8 @@
 library(tidyverse)   # data manipulation + ggplot2
 library(vegan)       # PERMANOVA (adonis2)
 library(viridis)     # colour palettes
+library(broom)       # for piping into tidy
+library(ggtext)      # formatting plot labels
 
 ## Set working directory
 wd = "C://Users//Kat//VS_Code//Bioinformatics"
@@ -97,12 +99,50 @@ abnd_tbl <- inner_join(count_tbl, taxon_tbl, by = "ASV") |>
   inner_join(metadata)
 glimpse(abnd_tbl)
 
+## What genera are significantly different between treatments?
+sig_genera <- abnd_tbl |>
+  nest(data = -taxon) |>                                   # all except taxon in a "data" column
+  mutate(test = map(.x = data,                             # iterates function over columns
+                    ~ wilcox.test(rel_abund ~ treatment,   # run wilcox test on each taxon row
+                                  data = .x) |>
+                      tidy())) |>                          # make nested test column tidy
+  unnest(test)|>                                           # un-nest test data
+  mutate(p.adjusted = p.adjust(p.value, method = "BH")) |> #adjust for multiple comparison false-positives
+  filter(p.adjusted < 0.05) |>
+  select(taxon, p.adjusted)
+glimpse(sig_genera) #136 significant genera
+
+sig_gen_plot <- abnd_tbl |>
+  inner_join(sig_genera, by = "taxon") |>
+  mutate(rel_abund = 100 * (rel_abund + 1/20000),
+         taxon = str_replace(taxon, "(.*)", "*\\1*"),
+#         taxon = str_repalce(taxon, "\\*(.*)_unclassified\\", "Unclassified<br>*\\1*"),
+         treatment = factor(treatment, levels = c("NoRxF", "RxF"))) |>
+  ggplot(aes(x = rel_abund, y = taxon, color = treatment, fill = treatment)) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 0.8,
+                                              jitter.width = 0.3),
+              shape = 12) +
+  stat_summary(fun.data = median_hilow, fun.args = list(conf.int = 0.5),
+               geom = "pointrange", position = position_dodge(width = 0.8),
+               color = "black", show.legend = FALSE) +
+  scale_x_log10() +
+  labs(x = "Relative Abundance (%)", y = NULL) +
+  scale_color_manual(NULL,
+                     breaks = c(RxF, NoRxF),
+                     values = c("gray", "red"),
+                     labels = c("NoRxF", "RxF")) +
+  theme_classic() +
+  theme(axis.text.y = element_markdown())
+
+sig_gen_plot
+ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//sig_genera.tiff", width =6, height=4)
 
 ## NOTE:
 # "([^;]*$)", $ matches from end, * matches zero or more so ; does not HAVE to exist,
 # [^.] matches one character outside of this (.) character class (https://regex101.com/r/fA3pI7/1/substitution)
 #"(?<=\\g__)\\w+", (?<=\\.) matches anything after (.), \\w+ matches all word chars after
-
+#
+# Benjaminy Hotchbuerg less conservative/strict than Bonferonni; preferred for microbiome data
 
 #-------------------------------------------------------------#
 #----------------- DIFFERENTIAL ABUNDANCE --------------------#
