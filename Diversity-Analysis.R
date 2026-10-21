@@ -102,43 +102,77 @@ frq_tbl <- filter(frq_tbl, Count > 0)
 ggplot(frq_tbl, aes(x = Count)) +
   geom_histogram(fill = n_colors[33], color = n_colors[35], binwidth = 20)  # somewhat better
 
-## Mean observations per subsite (total abundance is 6222 sampling depth)
+## Visualize median observations per treatment pair over across timepoints
+frq_tbl |> mutate(CollectMonth = factor(CollectMonth,
+                                        levels = c("Jan", "July"),
+                                        labels = c("Samples Collected 6mo Post-fire",
+                                                  "Samples Collected 12mo Post-fire"))) |>
+  ggplot(aes(x = Pair, y = Count, color = Treatment)) +
+  facet_wrap(~ CollectMonth, nrow = 1, scales = "free_x", strip.position = "bottom") +
+  stat_summary(fun.data = median_hilow,
+               fun.args = list(conf.int = 0.5),
+               geom = "pointrange",
+               position = position_dodge(width = 0.5)) +
+  theme(strip.placement = "outside",
+        strip.background = element_blank()) +
+  labs(x = NULL,
+       y = "ASV Count") +
+  scale_color_manual(name = NULL,
+                     breaks = c("NoRxF", "RxF"),
+                     labels = c("Wildfire Only", "RxF + Wildfire"),
+                     values = c("black", "red"))
+
+## Mean observations per subsite/sample (total abundance is 6222 sampling depth)
 avg_tbl <- frq_tbl |>
-  summarise(.by = c(Site, Subsite, Treatment, CollectMonth, Pair, TmntPair), # group data
+  summarise(.by = c(Subsite, Treatment, CollectMonth, Pair, TmntPair), # group data
             Avg_ASV = mean(Count))                                           # avg observations
 avg_tbl
 
-## Mean observations per subsite/sample (total abundance is 6222 sampling depth)
+## Mean observations per site
 avg_tbl_site <- frq_tbl |>
   summarise(.by = c(Site, Treatment, CollectMonth, Pair, TmntPair),  # group data
             Avg_ASV = mean(Count))                                   # avg observations
 avg_tbl_site
 
-asv_plot <- ggplot(avg_tbl_site, aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
-  geom_col(position = "dodge") +
-  scale_fill_brewer(palette = "Paired") +
+## Visualize mean ASV counts per paired site
+asv_plot <- avg_tbl |>
+  summarise(.by = c(Pair, Treatment), Avg_ASV = mean(Avg_ASV)) |>
+  ggplot(aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
+  geom_col(position = "dodge", alpha = 0.75) +
+  scale_fill_manual(values = c(col_vector[16], col_vector[22])) +
   labs(title = "Mean ASV Abundance per Paired Site",
        x = "Site Pair",
-       y = "Mean Abundance",
+       y = "Mean ASV Abundance",
        fill = "Treatment") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1),
         text = element_text(size = 20))
 asv_plot
-ggsave("Images/Avg_ASV_Pair.png")
+ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//Avg_ASV_Pair.png")
 
-pasv_plot <- ggplot(avg_tbl_site, aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
+## Visualize mean ASV counts per paired site across timepoints
+pasv_plot <- avg_tbl_site |>
+  mutate(CollectMonth = factor(CollectMonth,
+                               levels = c("Jan", "July"),
+                               labels = c("Samples Collected 6mo Post-fire",
+                                          "Samples Collected 12mo Post-fire"))) |>
+  ggplot(aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
   geom_col(position = "dodge", alpha = 0.75) +
   facet_grid(. ~ CollectMonth)  +
   scale_fill_manual(values = c(col_vector[16], col_vector[22])) +
-  labs(x = "\n Site Pair", y = "Mean ASV Abundance\n", title = "\n Mean ASV Abundance per Paired Site \n") +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(face = "bold", size = 12),
-        axis.title.y = element_text(face = "bold", size = 12),
-        legend.title = element_text(face = "bold", size = 10),
+  labs(#title = "\n Mean ASV Abundance per Paired Site \n",
+       x = "\n Site Pair",
+       y = "Mean ASV Abundance\n") +
+  theme(#plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(face = "bold", size = 14),
+        axis.title.y = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold", size = 12),
         strip.background = element_rect(fill = col_vector[16], colour = "white", size = 1),
         strip.text = element_text(face = "bold", colour = "white", size=rel(1.2)))
 pasv_plot
-ggsave("Images/Avg_ASV_Pair_Mo.png")
+ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//Avg_ASV_Pair_Mo.png")
 
 
 #-------------------------------------------------------------------------------------------#
