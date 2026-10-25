@@ -1,5 +1,5 @@
 # KAT ANDERSON AVITI SEQUENCE ANALYSIS WITH R
-# Updated 2026: 
+# Last updated 2026: 
 
 #-------------------------------------------------------------#
 #-------------------- PREPPING WORKSPACE ---------------------#
@@ -13,16 +13,26 @@
 library(tidyverse)      # data manipulation + ggplot2
 library(RColorBrewer)   # colour palettes
 library(nortest)        # anderson-darling test
-libary(car)             # leverne test
+library(car)            # leverne test
 library(vegan)          # microbio diversity
-library(rstatix)
-library(ggpubr)
+library(rstatix)        # stats package
+library(ggpubr)         # idk what this was for tbh
 
 ## Set working directory
-wd <- "C://Users//Kat//VS_Code//Bioinformatics"
-#wd <- "C://Users//mulle//VS_Code//Bioinformatics"
+wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
+#wd <- "C://Users//mulle//VS_Code//rxf-parkfire-fungi"
 setwd(wd)
 
+## Git repo
+#git clone https://github.com/Kareande/rxf-parkfire-fungi.git
+#git status
+#git checkout septimelata
+#git add .
+#git reset HEAD
+#git commit -m "comment message"    #-am skips stage step
+#git commit --amend
+#git push
+#git pull origin septimelata
 
 #------------------------------------------#
 #---- GENERATE COLOR PALLET FOR PLOTS -----#
