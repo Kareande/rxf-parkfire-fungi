@@ -1,9 +1,9 @@
 # KAT ANDERSON AVITI SEQUENCE ANALYSIS WITH R
 # Updated 2026: 
 
-#-------------------------------------------------------------#
-#-------------------- PREPPING WORKSPACE ---------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- PREPPING WORKSPACE -------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Install/load packages
 #install.packages("tidyverse")
@@ -27,34 +27,9 @@ meta <- meta[-1,]
 head(meta)
 
 
-#------------------------------------#
-#---- GENERATE COLORS FOR PLOTS -----#
-#------------------------------------#
-
-## Set seed for colors (repeatability)
-seed <- 82526
-set.seed(seed) 
-
-## Sample n colors from ColorBrewer
-n <- 13*4
-qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
-col_vector <- sort(col_vector)
-n_colors <- sample(col_vector, n)
-
-## Generate pallet of n colors
-par(mfrow=c(1,1),bg='white')
-pie(rep(1,n), col=n_colors, main=paste0('Color Pallet ',seed,'
-(',n,' Colors)'))
-
-## Save generated pallet
-dev.print(device = png, filename = paste0('Images/ColorPallet_',seed,'_',n,'Col.png'), width=672, height=672)
-dev.off()
-
-
-#-------------------------------------------------------------#
-#------------------ COMMUNITY - mikropml --------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------------- COMMUNITY - mikropml #------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Read frequency table
 count_tbl <- read.delim("rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
@@ -144,9 +119,9 @@ ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//sig_genera.tiff", 
 #
 # Benjaminy Hotchbuerg less conservative/strict than Bonferonni; preferred for microbiome data
 
-#-------------------------------------------------------------#
-#----------------- DIFFERENTIAL ABUNDANCE --------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------------- DIFFERENTIAL ABUNDANCE -----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 ## Install ANCOM-BC2 https://bioc.r-universe.dev/ANCOMBC/doc/manual.html
 if (!requireNamespace("BiocManager", quietly=TRUE))
     install.packages("BiocManager")
@@ -357,9 +332,9 @@ nrow(asvs_6mo) + nrow(asvs_12mo) #5315
 
 
 
-#-------------------------------------------------------------#
-#-------------------- COMMUNITY TRAITS -----------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------- COMMUNITY TRAITS --------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 ## Load in ASV/Taxon frequency table
 asvs <- read.delim("export-R\\asv-table\\feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
   as.data.frame() |>                                            # make it a dataframe
