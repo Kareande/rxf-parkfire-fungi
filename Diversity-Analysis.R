@@ -1,9 +1,9 @@
 # KAT ANDERSON AVITI SEQUENCE ANALYSIS WITH R
 # Last updated 2026: 
 
-#-------------------------------------------------------------#
-#-------------------- PREPPING WORKSPACE ---------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- PREPPING WORKSPACE -------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Install/load packages
 #install.packages("tidyverse")
@@ -34,41 +34,10 @@ setwd(wd)
 #git push
 #git pull origin septimelata
 
-#------------------------------------------#
-#---- GENERATE COLOR PALLET FOR PLOTS -----#
-#------------------------------------------#
 
-## Set seed for colors (repeatability)
-seed <- 82526
-set.seed(seed)
-
-## Sample n colors from ColorBrewer
-n <- 74
-qual_col_pals <- brewer.pal.info[brewer.pal.info$category == "qual", ]
-col_vector <- unlist(mapply(brewer.pal, qual_col_pals$maxcolors,
-                            rownames(qual_col_pals)))
-
-pie(rep(1, n), col = col_vector, main = paste0("Color Pallet ", seed, "
-(',n,' Colors)"))
-
-col_vector <- sort(col_vector)
-n_colors <- sample(col_vector, n)
-
-## Generate pallet of n colors
-par(mfrow = c(1, 1), bg = "white")
-pie(rep(1, n), col = n_colors, main = paste0("Color Pallet ", seed, "
-(',n,' Colors)"))
-
-## Save generated pallet
-dev.print(device = png,
-          filename = paste0("Images/ColorPallet_", seed, "_", n, "Col.png"),
-          width = 672, height = 672)
-dev.off()
-
-
-#-------------------------------------------------------------#
-#--------------------- TIDY DATASET --------------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------------- TIDY DATASET ----------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 ## NOTE:
 # I filtered out all samples with less than 500 reads,
 ## Load in data
@@ -185,9 +154,9 @@ pasv_plot
 ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//Avg_ASV_Pair_Mo.png")
 
 
-#-------------------------------------------------------------------------------------------#
-#---------- DOES ASV RICHNESS DIFFER B/T TREATMENTS, MONTHS, OR TREATMENT*MONTHS? ----------#
-#-------------------------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------- DOES ASV RICHNESS DIFFER B/T TREATMENTS, MONTHS, OR TREATMENT*MONTHS? ------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 #H0: The AVS counts do not differ across treatments
 #H1: The AVS counts are different for soil treated and not treated with RxF
 
@@ -315,9 +284,9 @@ anova(fit)                                       #p = 0.03106, null rejected
 # didn't make a difference.
 
 
-#-------------------------------------------------------------------------------------------#
-#------- DOES SHANNON/SIMPSON DIFFER B/T TREATMENTS, MONTHS, OR TREATMENT*MONTHS? ----------#
-#-------------------------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------- DOES SHANNON/SIMPSON DIFFER B/T TREATMENTS, MONTHS, OR TREATMENT*MONTHS? ----------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Calculate diversity indexes
 shn_tbl <- frq_tbl |>                                                  # use ASV table
@@ -425,9 +394,9 @@ friedman.test(smp_gmtrx)                               #p = 0.9776, null accepte
 # or between treatments across timepoints.
 
 
-#----------------------------------------------------------------------------#
-#------- BETA DIVERSITY ----------#
-#----------------------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------- BETA DIVERSITY ---------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Create freq matrix
 frq_mat <- read.delim("rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
