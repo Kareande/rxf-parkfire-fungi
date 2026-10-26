@@ -5,93 +5,131 @@
 #------------------------------------------------- PREPPING WORKSPACE -------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 
-## Install/load packages
-#install.packages("tidyverse")
-#install.packages("vegan")
-#install.packages("viridis")
+## Load packages
 library(tidyverse)   # data manipulation + ggplot2
 library(vegan)       # PERMANOVA (adonis2)
 library(viridis)     # colour palettes
 library(broom)       # for piping into tidy
 library(ggtext)      # formatting plot labels
+library(rstatix)     # stats package, anova_test
 
 ## Set working directory
 wd = "C://Users//Kat//VS_Code//Bioinformatics"
 setwd(wd)
 
-## Load metadata
-meta <- read.delim("metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
-  group_by(Site)
-meta$Treatment <- factor(meta$Treatment, levels = c("RxF", "NoRxF"))
-meta <- meta[-1,]
-head(meta)
-
 
 #----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------------- COMMUNITY - mikropml #------------------------------------------------#
+#------------------------------------------------- COMPOSITE DATASET --------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 
-## Read frequency table
-count_tbl <- read.delim("rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
+## Load in metadata
+metadata <- read.delim("metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
+  rename_all(tolower) |>                              # make all columns lowercase
+  rename(subsite = "sampleid", pair = "tmntpair") |>  # rename sampleid column
+  select(subsite, collectmonth, treatment, pair)  # select columns
+metadata <- metadata[-c(1), ]                         # remove Qiime2 formatting column
+glimpse(metadata) #subsite, metadata...
+
+## Create ASV abundance (count/observations) table from frequency table
+abund_tbl <- read.delim("rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
   as.data.frame() |>
   rename(ASV = "#OTU ID") |>                             # rename ASV column to ASV
-  pivot_longer(-ASV,
+  pivot_longer(-ASV,                                     # give subsites/samples their own columns
                names_to = "subsite",
-               values_to = "count")
-glimpse(count_tbl)
+               values_to = "abundance")
+glimpse(abund_tbl) #ASV, subsite, abundance
 
-## Read taxonomy/function table
-taxon_tbl <- read.delim("export-R/traits/fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
-  as.data.frame()
-tnames <- names(taxon_tbl)
-taxon_tbl <- taxon_tbl[-c(1), ]
-taxon_tbl <- taxon_tbl |>
-  select(tnames[1], tnames[2], tnames[4], tnames[5], tnames[6],
-         tnames[7], tnames[8], tnames[9], tnames[10]) |>
-  rename(ASV = "feature-id") |>
-  mutate(taxa = str_extract(taxon, "(?<=\\g__)\\w+")) |> 
-  mutate(taxa = if_else(is.na(taxa), str_extract(taxon, "([^;]*$)"), taxa)) |>
-  mutate(taxon = taxa) |>
-  select(-taxa)
-glimpse(taxon_tbl)
+## Create table of taxa/function assignments for ASVs
+taxon_code <- "g"                                                       # taxon of interest (k, p, c, o, f, g, or s)
+taxa_tbl <- read.delim("fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
+  as.data.frame() |>
+  select("feature-id":decay_substrate_template, -confidence) |>         # select columns
+  rename(ASV = "feature-id", taxonomy = "taxon") |>                     # rename columns
+  mutate(taxa = str_extract(taxonomy,
+                            paste0("(?<=", taxon_code, "__)\\w+"))) |>  # extract taxon from taxonomy column
+  mutate(taxa = if_else(is.na(taxa),
+                        str_extract(taxonomy, "([^;]*$)"),
+                        taxa)) |>                                       # if no taxon, extract next taxon
+  select(ASV, taxa, everything(), -taxonomy, -fungal_traits_genus)     # remove taxonomy column
+taxa_tbl <- taxa_tbl[-c(1), ]                                           # remove Qiime2 formatting column
+glimpse(taxa_tbl) #ASV, taxa, functions...
+#unique(taxa_tbl$taxa)
 
-## Read metadata
-metadata <- read.delim("metadata/metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
-  rename_all(tolower) |>
-  rename(subsite = "sampleid") |>
-  select(subsite, collectmonth, treatment, tmntpair)
-metadata <- metadata[-c(1), ]
-glimpse(metadata)
+## Composite taxa dataset
+composite <- abund_tbl |>
+  inner_join(metadata, by = "subsite") |>           # add taxa/functional data to ASV
+  inner_join(taxa_tbl, by = "ASV") |>               # add taxa/functional data to ASV
+  select(ASV, taxa, subsite, treatment, pair, collectmonth, abundance, everything()) |>
+  summarize(.by = -ASV, abundance = sum(abundance)) # calculate abundance of taxa per subsite
+glimpse(composite)
 
-## Join count and taxon tables
-abnd_tbl <- inner_join(count_tbl, taxon_tbl, by = "ASV") |>
-  summarize(.by = c(subsite, taxon), count = sum(count)) |>
-  group_by(subsite) |>
-  mutate(rel_abund = count / sum(count)) |>
-  ungroup() |>
-  select(-count) |>
-  inner_join(taxon_tbl) |>
-  inner_join(metadata)
-glimpse(abnd_tbl)
 
-## What genera are significantly different between treatments?
-sig_genera <- abnd_tbl |>
-  nest(data = -taxon) |>                                   # all except taxon in a "data" column
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------- RELATIVE ABUNDANCE OF TAXA ----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# inspired by https://www.youtube.com/watch?v=IoeSrLXeSos&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=251
+
+## Mean observations per subsite/sample (total abundance is 6222 b/c sampling depth)
+avg_tbl <- frq_tbl |>
+  summarise(.by = c(Subsite, Treatment, CollectMonth, Pair, TmntPair), # group data
+            Avg_ASV = mean(Count))                                           # avg observations
+avg_tbl
+
+## Mean observations per site
+avg_tbl_site <- frq_tbl |>
+  summarise(.by = c(Site, Treatment, CollectMonth, Pair, TmntPair),  # group data
+            Avg_ASV = mean(Count))                                   # avg observations
+avg_tbl_site
+
+## Visualize mean ASV counts per paired site across timepoints
+pasv_plot <- avg_tbl_site |>
+  mutate(CollectMonth = factor(CollectMonth,
+                               levels = c("Jan", "July"),
+                               labels = c("Samples Collected 6mo Post-fire",
+                                          "Samples Collected 12mo Post-fire"))) |>
+  ggplot(aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
+  geom_col(position = "dodge", alpha = 0.75) +
+  facet_grid(. ~ CollectMonth)  +
+  scale_fill_manual(values = c(col_vector[16], col_vector[22])) +
+  labs(#title = "\n Mean ASV Abundance per Paired Site \n",
+       x = "\n Site Pair",
+       y = "Mean ASV Abundance\n") +
+  theme(#plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(face = "bold", size = 14),
+        axis.title.y = element_text(face = "bold", size = 14),
+        legend.title = element_text(face = "bold", size = 12),
+        strip.background = element_rect(fill = col_vector[16], colour = "white", size = 1),
+        strip.text = element_text(face = "bold", colour = "white", size=rel(1.2)))
+pasv_plot
+ggsave("figures/Avg_ASV_Pair_Mo.png")
+
+## Calculate relative abundance of each taxon
+rabnd_tbl <- composite |>
+  mutate(.by = subsite, rel.abund = abundance / sum(abundance))  # calculate relative abundance
+glimpse(rabnd_tbl)
+
+## What taxon are significantly different? (all samples)
+sig_taxa <- rabnd_tbl |>
+  nest(data = -taxa) |>                                    # give each taxa attached data
   mutate(test = map(.x = data,                             # iterates function over columns
-                    ~ wilcox.test(rel_abund ~ treatment,   # run wilcox test on each taxon row
-                                  data = .x) |>
+                    ~ anova_test(dv = rel.abund,           # dependant var
+                                 wid = pair,               # identifier is site
+                                 within = c(collectmonth, treatment),
+                                 data = .x) |>             # run ANOVA on each taxon
                       tidy())) |>                          # make nested test column tidy
-  unnest(test)|>                                           # un-nest test data
-  mutate(p.adjusted = p.adjust(p.value, method = "BH")) |> #adjust for multiple comparison false-positives
-  filter(p.adjusted < 0.05) |>
-  select(taxon, p.adjusted)
-glimpse(sig_genera) #136 significant genera
+  unnest(test) |>                                          # un-nest test data
+  mutate(p.adjusted = p.adjust(p.value, method = "BH")) |> # adjust for multiple comparison false-positives
+  select(taxa, p.adjusted) |>                              # select only the taxon and adjusted p
+  filter(p.adjusted < 0.05)
+glimpse(sig_taxa)
 
-sig_gen_plot <- abnd_tbl |>
-  inner_join(sig_genera, by = "taxon") |>
-  mutate(rel_abund = 100 * (rel_abund + 1/20000),
-         taxon = str_replace(taxon, "(.*)", "*\\1*"),
-#         taxon = str_repalce(taxon, "\\*(.*)_unclassified\\", "Unclassified<br>*\\1*"),
+
+## Visualize significant genera
+sig_gen_plot <- rabnd_tbl |>
+  inner_join(sig_taxa, by = "taxa") |>
+  mutate(rel_abund = 100 * (rel.abund + 1/20000),
+         taxa = str_replace(taxa, "(.*)", "*\\1*"),
+#         taxon = str_repalce(taxa, "\\*(.*)_unclassified\\", "Unclassified<br>*\\1*"),
          treatment = factor(treatment, levels = c("NoRxF", "RxF"))) |>
   ggplot(aes(x = rel_abund, y = taxon, color = treatment, fill = treatment)) +
   geom_jitter(position = position_jitterdodge(dodge.width = 0.8,
@@ -106,8 +144,15 @@ sig_gen_plot <- abnd_tbl |>
                      breaks = c(RxF, NoRxF),
                      values = c("gray", "red"),
                      labels = c("NoRxF", "RxF")) +
+  scale_fill_manual(NULL,
+                     breaks = c(RxF, NoRxF),
+                     values = c("gray", "red"),
+                     labels = c("NoRxF", "RxF")) +
   theme_classic() +
   theme(axis.text.y = element_markdown())
+
+glimpse(sig_gen_plot)
+
 
 sig_gen_plot
 ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//sig_genera.tiff", width =6, height=4)

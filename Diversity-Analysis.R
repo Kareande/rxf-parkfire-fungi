@@ -15,7 +15,7 @@ library(RColorBrewer)   # colour palettes
 library(nortest)        # anderson-darling test
 library(car)            # leverne test
 library(vegan)          # microbio diversity
-library(rstatix)        # stats package
+library(rstatix)        # stats package, anova_test
 library(ggpubr)         # idk what this was for tbh
 
 ## Set working directory
@@ -72,16 +72,18 @@ frq_tbl
 
 ## Histogram
 ggplot(frq_tbl, aes(x = Count)) +
-  geom_histogram(fill = n_colors[33], color = n_colors[35], binwidth = 20)  # yikes
+  geom_histogram(binwidth = 20)  # yikes
 
 ## Remove any ASVs with zero counts
 frq_tbl <- filter(frq_tbl, Count > 0)
 
 ## Histogram
 ggplot(frq_tbl, aes(x = Count)) +
-  geom_histogram(fill = n_colors[33], color = n_colors[35], binwidth = 20)  # somewhat better
+  geom_histogram(binwidth = 20)  # somewhat better
 
 ## Visualize median observations per treatment pair over across timepoints
+#inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+#and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
 frq_tbl |> mutate(CollectMonth = factor(CollectMonth,
                                         levels = c("Jan", "July"),
                                         labels = c("Samples Collected 6mo Post-fire",
@@ -100,8 +102,42 @@ frq_tbl |> mutate(CollectMonth = factor(CollectMonth,
                      breaks = c("NoRxF", "RxF"),
                      labels = c("Wildfire Only", "RxF + Wildfire"),
                      values = c("black", "red"))
+ggsave("figures/avg_abnd_pntrngplt.png")
 
-## Mean observations per subsite/sample (total abundance is 6222 sampling depth)
+frq_tbl |> summarise(.by = c(Treatment, CollectMonth, Pair),  # group data by Treatment, Pair, and Month
+                     avg.abnd = mean(Count)) |>               # average abundance
+  pivot_wider(names_from = c(CollectMonth),
+              values_from = avg.abnd) |>                      # widen for bump calcs (to offset label)
+  rename(abnd_Jan = "Jan", abnd_July = "July") |>             # rename so pivot_longer works easier
+  mutate(bump_Jan = if_else(abnd_Jan > abnd_July,
+                            abnd_Jan + 2,
+                            abnd_Jan - 2),
+         bump_July = if_else(abnd_Jan > abnd_July,
+                             abnd_July - 2,
+                             abnd_July + 2)) |>               # calculate label offsets
+  pivot_longer(cols = c(abnd_Jan, abnd_July, bump_Jan, bump_July),
+               names_to = c(".value", "CollectMonth"),
+               names_sep = "_") |>                            # make dataset tidy again
+  ggplot(aes(x = abnd, y = Pair, color = CollectMonth)) +     # generate plot
+  facet_wrap(~ Treatment, nrow = 1, scales = "free_x", strip.position = "bottom") + # split plots by Treatment
+  geom_line(color = "black", size = 1.75, alpha = 0.35) +   # add semi-trans black line of specific size
+  geom_point(size = 2.5) +                                    # add point of particular size
+  geom_text(aes(label = round(abnd, digits = 0), x = bump)) + # label point w/ abundance value at bump position
+  scale_color_manual(name = NULL, breaks = c("Jan", "July"),  # color by month, no legend title
+                     values = c("#008080", "#CC5500"),     # manual color for points 
+                     labels = c("January", "July")) +         # legend labels
+  labs(title = "Average ASV Abundance Across Treatments and Timepoint",
+       x = "Average ASV Abundance",                           # x-axis label
+       y = "Site Pair",                                       # y-axis label
+       caption = "<i>Base: 12 paired sites, 9 samples taken from each paired site</i>") +
+  theme_minimal() +                                           # remove gray blocks from background
+  theme(plot.title.position = "plot",                         # move title to start at left of plot
+        plot.title = element_text(face = "bold"),             # make title bold
+        plot.caption = element_text(hjust = 0, color = "#4b4a4a"), # move caption to start left of plot
+        plot.caption.position = "plot")                       #
+ggsave("figures/avg_abnd_dmbllplt.png")
+
+## Mean observations per subsite/sample (total abundance is 6222 b/c sampling depth)
 avg_tbl <- frq_tbl |>
   summarise(.by = c(Subsite, Treatment, CollectMonth, Pair, TmntPair), # group data
             Avg_ASV = mean(Count))                                           # avg observations
@@ -129,7 +165,7 @@ asv_plot <- avg_tbl |>
         axis.text.x = element_text(angle = 45, hjust = 1),
         text = element_text(size = 20))
 asv_plot
-ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//Avg_ASV_Pair.png")
+ggsave("figures/Avg_ASV_Pair.png")
 
 ## Visualize mean ASV counts per paired site across timepoints
 pasv_plot <- avg_tbl_site |>
@@ -151,7 +187,7 @@ pasv_plot <- avg_tbl_site |>
         strip.background = element_rect(fill = col_vector[16], colour = "white", size = 1),
         strip.text = element_text(face = "bold", colour = "white", size=rel(1.2)))
 pasv_plot
-ggsave("C://Users//Kat//VS_Code//rxf-parkfire-fungi//figures//Avg_ASV_Pair_Mo.png")
+ggsave("figures/Avg_ASV_Pair_Mo.png")
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -204,9 +240,9 @@ wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p = 0.6875, nu
 #t.test: Is there is a difference between the mean differences in ASV counts for the Months?
 #wilcox: Is there a difference between the summed ranks of the differences in ASV counts for the Months?
 count_ptable2 <- rich_tbl |>                                      # use count table
-  summarise(.by = c(CollectMonth, Pair),                          # group data by Tmnt and Pair
-            count_asv = sum(count_asv)) |>                        # count number of unique ASV for each Tmnt*Pair
-  pivot_wider(names_from = CollectMonth, values_from = count_asv) # seperate columns for Tmnt counts
+  summarise(.by = c(CollectMonth, Pair),                          # group data by Month and Pair
+            count_asv = sum(count_asv)) |>                        # count number of unique ASV for each Month*Pair
+  pivot_wider(names_from = CollectMonth, values_from = count_asv) # seperate columns for Month counts
 count_ptable2
 t.test(count_ptable2$Jan, count_ptable2$July, paired = TRUE)      #p = 0.5118, null accepted
 wilcox.test(count_ptable2$Jan, count_ptable2$July, paired = TRUE) #p = 0.5625, null accepted
