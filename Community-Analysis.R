@@ -23,7 +23,7 @@ setwd(wd)
 #----------------------------------------------------------------------------------------------------------------------#
 
 ## Load in metadata
-metadata <- read.delim("metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
+metadata <- read.delim("data/metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
   rename_all(tolower) |>                              # make all columns lowercase
   rename(subsite = "sampleid", pair = "tmntpair") |>  # rename sampleid column
   select(subsite, collectmonth, treatment, pair)  # select columns
@@ -31,7 +31,7 @@ metadata <- metadata[-c(1), ]                         # remove Qiime2 formatting
 glimpse(metadata) #subsite, metadata...
 
 ## Create ASV abundance (count/observations) table from frequency table
-abund_tbl <- read.delim("rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
+abund_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
   as.data.frame() |>
   rename(ASV = "#OTU ID") |>                             # rename ASV column to ASV
   pivot_longer(-ASV,                                     # give subsites/samples their own columns
@@ -41,7 +41,7 @@ glimpse(abund_tbl) #ASV, subsite, abundance
 
 ## Create table of taxa/function assignments for ASVs
 taxon_code <- "g"                                                       # taxon of interest (k, p, c, o, f, g, or s)
-taxa_tbl <- read.delim("fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
+taxa_tbl <- read.delim("data/fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
   as.data.frame() |>
   select("feature-id":decay_substrate_template, -confidence) |>         # select columns
   rename(ASV = "feature-id", taxonomy = "taxon") |>                     # rename columns
@@ -175,7 +175,7 @@ library(ANCOMBC)
 
 ## Set up ASV table
 #row names must be taxa and column names must be samples
-asvs <- read.delim("export-R\\asv-table\\feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
+asvs <- read.delim("data/feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
   as.data.frame() |>                                            # make it a dataframe
   mutate(taxonomy = gsub(" ", "", taxonomy)) |>
   select(ASV, taxonomy, everything())
@@ -207,7 +207,7 @@ head(asvs_ancom)[1:5,1:3]
 
 ## Set up metadata
 #column names must be samples, must filter out samples not in feature table
-metadata <- as.data.frame(read.delim("export-R\\asv-table\\metadata_noctl.tsv", sep = "\t", check.names = FALSE))
+metadata <- as.data.frame(read.delim("data/metadata_noctl.tsv", sep = "\t", check.names = FALSE))
 metadata <- metadata[-c(1), ]        #remove qiime data format row
 row.names(metadata) <- metadata$SampleID
 metadata <- metadata[,-1]
@@ -360,8 +360,8 @@ fig_bmi
 
 
 
-asvs_6mo <- read.delim("export-R\\asv-table\\feat_table_taxon_6mo.tsv", skip = 1, sep = "\t", check.names = FALSE)
-asvs_12mo <- read.delim("export-R\\asv-table\\feat_table_taxon_12mo.tsv", skip = 1, sep = "\t", check.names = FALSE)
+asvs_6mo <- read.delim("data/feat_table_taxon_6mo.tsv", skip = 1, sep = "\t", check.names = FALSE)
+asvs_12mo <- read.delim("data/feat_table_taxon_12mo.tsv", skip = 1, sep = "\t", check.names = FALSE)
 nrow(asvs_6mo) #2181
 nrow(asvs_12mo) #3134
 nrow(asvs_6mo) + nrow(asvs_12mo) #5315
@@ -381,7 +381,7 @@ nrow(asvs_6mo) + nrow(asvs_12mo) #5315
 #-------------------------------------------------- COMMUNITY TRAITS --------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 ## Load in ASV/Taxon frequency table
-asvs <- read.delim("export-R\\asv-table\\feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
+asvs <- read.delim("data/feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
   as.data.frame() |>                                            # make it a dataframe
   rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>      # rename columns to not begin w/ integer
   rename(ASV = "sample_ASV") |>
@@ -399,7 +399,7 @@ head(asvs)
 #6 cc8bf5cb112fac12a039a3561bd92bcc                                                                  k__Fungi;p__Basidiomycota;c__Agaricomycetes;o__Agaricales           0           0           0           7           0           0
 
 ## Load in Taxon/Trait table
-taxtraits <- read.delim("export-R\\traits\\fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
+taxtraits <- read.delim("data/fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
   as.data.frame() |> 
   rename(taxonomy = "taxon") |> 
   rename(ASV = "feature-id") |> 
