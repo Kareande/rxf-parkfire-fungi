@@ -103,7 +103,7 @@ font_add_google(family = "roboto", "Roboto")                          # download
 showtext_auto(enable = TRUE)                                          # render the text
 ftheme <- "patua-one"                                                 # designate font
 
-## Visualize mean abundance per treatment pair over across timepoints, point range (alt to boxplot)
+## Visualize abundance per treatment pair over across timepoints, point range (alt to boxplot)
 #inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
 frq_tbl |> mutate(month = factor(month,                                               # make month a factor
                                  levels = c("Jan", "July"),                           # order the months
@@ -146,7 +146,7 @@ frq_tbl |> mutate(month = factor(month,                                         
         strip.text = element_text(face = "bold",                     # strip font face
                                   colour = "black",                  # strip font color
                                   size = rel(1)))                    # strip font size
-ggsave("figures/avg_abnd_pntrngplt.png")
+ggsave("figures/abnd_pntrngplt.png")
 
 ## Visualize mean abundance per treatment pair over across timepoints, dumbell plot
 #and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
@@ -166,7 +166,7 @@ frq_tbl |> summarise(.by = c(treatment, month, pair),               # group data
                names_sep = "_") |>
   ggplot(aes(x = abnd, y = pair, color = month)) +
   facet_wrap(~ treatment, nrow = 1, strip.position = "bottom") +    # split plots by treatment
-  geom_line(color = "black", size = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
+  geom_line(color = "black", linewidth = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
   geom_point(size = 2.5) +                                          # add point of particular size
   geom_text(aes(label = round(abnd, digits = 0), x = bump)) +       # label point w/ abundance value at bump position
   scale_color_manual(breaks = c("Jan", "July"),                     # color by month
@@ -320,7 +320,7 @@ ggsave("figures/avg_abnd_barplt.png")
 #H0: The AVS counts do not differ across treatments
 #H1: The AVS counts are different for soil treated and not treated with RxF
 
-## Count unique ASVs per subsite/sample
+## Count unique ASVs per subsite/sample (richness)
 rich_tbl <- frq_tbl |>                           # use freq table
   summarise(.by = c(site, subsite, treatment,    # group data
                     pair, tmntpair, month),
@@ -759,21 +759,22 @@ nmds_pos |>
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- CHANGE RELATIVE TO POINT ----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
+#inspired by https://www.youtube.com/watch?v=jLVKJ_n6Qd0&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=167
 
-bray |>                                 # use distance matrix from NMDS section
-  as.matrix() |>                        # convert to matrix
-  as_tibble(rownames = "sample") |>     # convert to tibble
-  pivot_longer(-sample) |>              # make tidy
-  filter(sample < name) |>              # filter for only one triangle of matrix
-  sample_lookup(sampleid = "sample") |> # use function defined in NMDS section
+bray |>                                                # use distance matrix from NMDS section
+  as.matrix() |>                                       # convert to matrix
+  as_tibble(rownames = "sample") |>                    # convert to tibble
+  pivot_longer(-sample) |>                             # make tidy
+  filter(sample < name) |>                             # filter for only one triangle of matrix
+  sample_lookup(sampleid = "sample") |>                # use function defined in NMDS section
   rename(site_a = "site",
          subsite_a = "subsite",
          month_a = "month",
          treatment_a = "treatment",
          pair_a = "pair") |>
-  sample_lookup(sampleid = "name") |> # use function defined in NMDS section
+  sample_lookup(sampleid = "name") |>                  # use function defined in NMDS section
   select(-tmntmonth) |>
   #filter(month_a == month & treatment_a != treatment)  # across treatments
-  filter(subsite_a == subsite) |>  # across months
+  filter(subsite_a == subsite) |>                      # across months
   ggplot(aes(x = subsite, y = value, group = site)) +
   geom_line()
