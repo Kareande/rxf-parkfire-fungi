@@ -14,7 +14,7 @@ library(ggtext)      # formatting plot labels
 library(rstatix)     # stats package, anova_test
 
 ## Set working directory
-wd = "C://Users//Kat//VS_Code//Bioinformatics"
+wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
 setwd(wd)
 
 
@@ -26,68 +26,224 @@ setwd(wd)
 metadata <- read.delim("data/metadata_noctl.tsv", sep = "\t", check.names = FALSE) |>
   rename_all(tolower) |>                              # make all columns lowercase
   rename(subsite = "sampleid", pair = "tmntpair") |>  # rename sampleid column
-  select(subsite, collectmonth, treatment, pair)  # select columns
+  rename(month = "collectmonth") |>                   # rename sampleid column
+  select(site, subsite, month, treatment, pair)             # select columns
 metadata <- metadata[-c(1), ]                         # remove Qiime2 formatting column
 glimpse(metadata) #subsite, metadata...
 
 ## Create ASV abundance (count/observations) table from frequency table
 abund_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
   as.data.frame() |>
-  rename(ASV = "#OTU ID") |>                             # rename ASV column to ASV
-  pivot_longer(-ASV,                                     # give subsites/samples their own columns
+  rename(asv = "#OTU ID") |>                             # rename ASV column to asv
+  pivot_longer(-asv,                                     # give subsites/samples their own columns
                names_to = "subsite",
                values_to = "abundance")
-glimpse(abund_tbl) #ASV, subsite, abundance
+glimpse(abund_tbl) #asv, subsite, abundance
 
 ## Create table of taxa/function assignments for ASVs
 taxon_code <- "g"                                                       # taxon of interest (k, p, c, o, f, g, or s)
 taxa_tbl <- read.delim("data/fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
   as.data.frame() |>
   select("feature-id":decay_substrate_template, -confidence) |>         # select columns
-  rename(ASV = "feature-id", taxonomy = "taxon") |>                     # rename columns
+  rename(asv = "feature-id", taxonomy = "taxon") |>                     # rename columns
   mutate(taxa = str_extract(taxonomy,
                             paste0("(?<=", taxon_code, "__)\\w+"))) |>  # extract taxon from taxonomy column
   mutate(taxa = if_else(is.na(taxa),
                         str_extract(taxonomy, "([^;]*$)"),
                         taxa)) |>                                       # if no taxon, extract next taxon
-  select(ASV, taxa, everything(), -taxonomy, -fungal_traits_genus)     # remove taxonomy column
+  select(asv, taxa, everything(), -taxonomy, -fungal_traits_genus)     # remove taxonomy column
 taxa_tbl <- taxa_tbl[-c(1), ]                                           # remove Qiime2 formatting column
-glimpse(taxa_tbl) #ASV, taxa, functions...
+glimpse(taxa_tbl) #asv, taxa, functions...
 #unique(taxa_tbl$taxa)
 
 ## Composite taxa dataset
 composite <- abund_tbl |>
-  inner_join(metadata, by = "subsite") |>           # add taxa/functional data to ASV
-  inner_join(taxa_tbl, by = "ASV") |>               # add taxa/functional data to ASV
-  select(ASV, taxa, subsite, treatment, pair, collectmonth, abundance, everything()) |>
-  summarize(.by = -ASV, abundance = sum(abundance)) # calculate abundance of taxa per subsite
+  left_join(taxa_tbl, by = "asv") |>                   # add taxa/functional data to rarefied asv
+  inner_join(metadata, by = "subsite") |>              # add taxa/functional data to dataset
+  select(asv, taxa, subsite, treatment, pair, month, abundance, everything()) |>
+  summarize(.by = -asv, abundance = sum(abundance)) |> # calculate abundance of taxa per subsite
+  filter(abundance > 0)
 glimpse(composite)
 
+## Calculate relative abundance of each taxon by subsite
+rabnd_tbl <- composite |>
+  summarise(.by = c(taxa, site, subsite, treatment, month, pair),       # group data
+            abundance = sum(abundance)) |>                                   # mean rel abundance (%)
+  mutate(.by = subsite, rel.abund = ((abundance / sum(abundance)) * 100))
+glimpse(rabnd_tbl)
+
+## Histogram
+ggplot(rabnd_tbl, aes(x = rel.abund)) +
+  geom_histogram()  # somewhat better
+
 
 #----------------------------------------------------------------------------------------------------------------------#
-#-------------------------------------------- RELATIVE ABUNDANCE OF TAXA ----------------------------------------------#
+#----------------------------------------------- ABUNDANCE VISUALIZATIONS----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# inspired by https://www.youtube.com/watch?v=IoeSrLXeSos&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=251
 
-## Mean observations per subsite/sample (total abundance is 6222 b/c sampling depth)
-avg_tbl <- frq_tbl |>
-  summarise(.by = c(Subsite, Treatment, CollectMonth, Pair, TmntPair), # group data
-            Avg_ASV = mean(Count))                                           # avg observations
+## Determine taxon based on code in above section
+if (taxon_code == "s") {
+  taxon <- "Species"
+} else if (taxon_code == "g") {
+  taxon <- "Genus"
+} else if (taxon_code == "f") {
+  taxon <- "Family"
+} else if (taxon_code == "o") {
+  taxon <- "Order"
+} else if (taxon_code == "c") {
+  taxon <- "Class"
+} else if (taxon_code == "p") {
+  taxon <- "Phylum"
+} else {
+  taxon <- "Kingdom"
+}
+
+## Provide plot parameters
+plttit <- paste("Abundance of",
+                taxon,
+                "Across Paired Treatments and Months \n")             # designate plot title
+avg_plttit <- paste("Average Relative Abundance of",
+                taxon,
+                "Across Paired Treatments and Months \n")             # designate plot title
+xtit <- "\n Site Pair"                                                # designate x-title
+ytit <- paste(taxon, "Abundance \n")                                    # designate y-title
+avg_ytit <- "Average ASV Abundance \n"                                    # designate y-title
+ctheme <- c("#807d7d", "#ac2b2b")                                 # designate fill colors for treatments
+ctheme2 <- c("#008080", "#CC5500")                                # designate fill colors for months
+ccap <- "#4b4a4a"                                                   # designate caption font color
+
+## Visualize mean abundance per treatment pair over across timepoints, point range (alt to boxplot)
+#inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+composite |> mutate(month = factor(month,                                              # make month a factor
+                                   levels = c("Jan", "July"),                          # order the months
+                                   labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
+                                              "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
+  ggplot(aes(x = pair, y = abundance, color = treatment)) +
+  facet_wrap(~ month, nrow = 1, scales = "free_x", strip.position = "bottom") +        # split plot by months
+  stat_summary(fun.data = median_hilow,                                                # medians for points
+               fun.args = list(conf.int = 0.5),                                        # confidence interval for range
+               geom = "pointrange",                                                    # point-range plot
+               position = position_dodge(width = 0.5)) +                               # plot treatments side-by-side
+  labs(title = paste(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = NULL,                                                     # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       color = NULL) +                                               # legend title
+  scale_color_manual(name = NULL,                                    # legend title
+                     breaks = c("NoRxF", "RxF"),                     # legend categories
+                     labels = c("Wildfire Only", "RxF + Wildfire"),  # legend category titles
+                     values = ctheme) +                              # line fill colors
+  theme(text = element_text(size = 14),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.placement = "outside",                                 # place strip below axis labels
+        strip.background = element_blank(),                          # remove facet strip fill
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  colour = "black",                  # strip font color
+                                  size = rel(1)))                    # strip font size
+ggsave(paste0("figures/abnd_", taxon, "_pntrngplt.png"))
+
+## Visualize mean abundance per treatment pair over across timepoints, dumbell plot
+#and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
+rabnd_tbl |>
+  summarise(.by = c(treatment, month, pair),             # group data by treatment, pair, and month
+            avg.rel.abund = mean(rel.abund)) |>                    # mean relative abundance (%)
+  pivot_wider(names_from = c(month),                                # use months for column titles
+              values_from = avg.rel.abund) |>                            # widen for bump calcs (to offset label)
+  rename(avg.rel.abund_Jan = "Jan", avg.rel.abund_July = "July") |>            # rename so pivot_longer works easier
+  mutate(bump_Jan = if_else(avg.rel.abund_Jan > avg.rel.abund_July,  # create bumps 2 to the left or right of points
+                            avg.rel.abund_Jan + .2,
+                            avg.rel.abund_Jan - .2),
+         bump_July = if_else(avg.rel.abund_Jan > avg.rel.abund_July, # create bumps 2 to the right or left of points
+                             avg.rel.abund_July - .2,
+                             avg.rel.abund_July + .2)) |>
+  pivot_longer(cols = c(avg.rel.abund_Jan, avg.rel.abund_July, bump_Jan, bump_July),
+               names_to = c(".value", "month"),                     # collapse into abnd or bump columns
+               names_sep = "_") |>
+  ggplot(aes(x = avg.rel.abund, y = pair, color = month)) +
+  facet_wrap(~ treatment, nrow = 1, strip.position = "bottom") +    # split plots by treatment
+  geom_line(color = "black", linewidth = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
+  geom_point(size = 2.5) +                                          # add point of particular size
+  geom_text(aes(label = round(avg.rel.abund, digits = 1), x = bump)) +   # label point w/ value at bump position
+  scale_color_manual(breaks = c("Jan", "July"),                     # color by month
+                     values = ctheme2,                              # point fill colors
+                     labels = c("January", "July")) +               # legend labels
+  labs(title = paste0(avg_plttit),                                      # plot title
+       subtitle = NULL,                                             # plot subtitle
+       x = paste0(ytit),                                            # x-axis label
+       y = paste0(xtit),                                            # y-axis label
+       caption = "<i>Each 'dumbell' represents one site, of which contained 9 samples.</i>",
+       tag = "Figure X \n",                                         # tag label
+       color = NULL) +                                              # legend title
+  scale_x_continuous(limits = c(0, 5), breaks = seq(0, 5, 1)) +
+  theme_classic() +                                                 # remove gray blocks from background
+  theme(plot.title.position = "plot",                               # align title to plot
+        plot.title = element_text(hjust = 0.5,                      # title justification
+                                  face = "bold",                    # title font face
+                                  family = NULL),                   # title font
+        axis.title.x = element_text(face = "bold",                  # x-axis font face
+                                    size = 14),                     # x-axis font size
+        axis.title.y = element_text(face = "bold",                  # y-axis font face
+                                    size = 14),                     # y-axis font size
+        plot.caption.position = "plot",                             # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                  # caption justification (markdown for HTML)
+                                        color = ccap),              # caption font color
+        legend.title = element_text(face = "bold",                  # legend face
+                                    size = 12),                     # legend font size
+        strip.background = element_rect(fill = "white",             # strip background color
+                                        colour = "black"),          # strip border color
+        strip.text = element_text(face = "bold",                    # strip font face
+                                  colour = "black",                 # strip font color
+                                  size = rel(1.2)))                 # strip font size
+ggsave(paste0("figures/avg_relabnd_", taxon, "_dmbllplt.png"))
+
+
+
+
+
+
+
+
+## Count unique taxa per subsite/sample (richness)
+rich_tbl <- composite |>                          # use freq table
+  summarise(.by = c(subsite, treatment,           # group data
+                    pair, month, primary_lifestyle),
+            count_asv = length(unique(taxa)))     # number of unique taxa per subsite
+rich_tbl
+
+## Mean observations of taxa per subsite/sample
+avg_tbl <- composite |>
+  summarise(.by = c(subsite, treatment, month, pair), # group data
+            avg_abnd = mean(abundance))                                           # avg observations
 avg_tbl
 
 ## Mean observations per site
 avg_tbl_site <- frq_tbl |>
-  summarise(.by = c(Site, Treatment, CollectMonth, Pair, TmntPair),  # group data
-            Avg_ASV = mean(Count))                                   # avg observations
+  summarise(.by = c(site, treatment, month, pair, tmntpair),  # group data
+            avg_abnd = mean(abundance))                                   # avg observations
 avg_tbl_site
 
-## Visualize mean ASV counts per paired site across timepoints
+## Visualize mean asv counts per paired site across timepoints
 pasv_plot <- avg_tbl_site |>
-  mutate(CollectMonth = factor(CollectMonth,
+  mutate(month = factor(month,
                                levels = c("Jan", "July"),
                                labels = c("Samples Collected 6mo Post-fire",
                                           "Samples Collected 12mo Post-fire"))) |>
-  ggplot(aes(x = Pair, y = Avg_ASV, fill = Treatment)) +
+  ggplot(aes(x = pair, y = Avg_asv, fill = Treatment)) +
   geom_col(position = "dodge", alpha = 0.75) +
   facet_grid(. ~ CollectMonth)  +
   scale_fill_manual(values = c(col_vector[16], col_vector[22])) +
@@ -103,6 +259,12 @@ pasv_plot <- avg_tbl_site |>
 pasv_plot
 ggsave("figures/Avg_ASV_Pair_Mo.png")
 
+
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------- RELATIVE ABUNDANCE OF TAXA ----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# inspired by https://www.youtube.com/watch?v=IoeSrLXeSos&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=251
+
 ## Calculate relative abundance of each taxon
 rabnd_tbl <- composite |>
   mutate(.by = subsite, rel.abund = abundance / sum(abundance))  # calculate relative abundance
@@ -114,7 +276,7 @@ sig_taxa <- rabnd_tbl |>
   mutate(test = map(.x = data,                             # iterates function over columns
                     ~ anova_test(dv = rel.abund,           # dependant var
                                  wid = pair,               # identifier is site
-                                 within = c(collectmonth, treatment),
+                                 within = c(month, treatment),
                                  data = .x) |>             # run ANOVA on each taxon
                       tidy())) |>                          # make nested test column tidy
   unnest(test) |>                                          # un-nest test data
@@ -178,19 +340,19 @@ library(ANCOMBC)
 asvs <- read.delim("data/feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
   as.data.frame() |>                                            # make it a dataframe
   mutate(taxonomy = gsub(" ", "", taxonomy)) |>
-  select(ASV, taxonomy, everything())
+  select(asv, taxonomy, everything())
 nrow(asvs) #3998
 length(unique(asvs$taxonomy)) #1059
 head(asvs)
-#                               ASV                                                                                                                   taxonomy        10B1        10C1        10D1        10E1        10G1        10H1
+#                               asv                                                                                                                   taxonomy        10B1        10C1        10D1        10E1        10G1        10H1
 #1 be940f3d627f5e7aee26e5f93995658c                         k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Rhynchogastremaceae;g__Papiliotrema         272           0         171          90         287          15
 #2 ea878a2bb3050c29de504f4c0ad4ed24    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Cryptococcaceae;g__Cryptococcus;s__Cryptococcus_watticus        3634          32          17         755         616         279
 #3 1fa535421f0269e28fe60ea966b9413c    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Filobasidiales;f__Filobasidiaceae;g__Naganishia;s__Naganishia_randhawae        1607          60          12        2225         357         481
 #4 d49fcfae6b96a7c21466bb803c8a4565                                                                                                                   k__Fungi           0           0         244           0           0           2
 #5 97079bf11a49c19a13468b7bee42a8b3 k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Filobasidiales;f__Piskurozymaceae;g__Solicoccozyma;s__Solicoccozyma_terrea        1399        7346          29         150          90          14
 #6 cc8bf5cb112fac12a039a3561bd92bcc                                                                  k__Fungi;p__Basidiomycota;c__Agaricomycetes;o__Agaricales           0           0           0           7           0           0
-asvs_ancom <- pivot_longer(asvs, c(-taxonomy,-ASV)) |> #remove the ASV column to only have taxon and sample freqs
-  select(-ASV) |>                                       #remove ASV column
+asvs_ancom <- pivot_longer(asvs, c(-taxonomy,-asv)) |> #remove the asv column to only have taxon and sample freqs
+  select(-asv) |>                                       #remove asv column
   rename(SampleID = "name") |>                          #rename column
   pivot_wider(names_from = SampleID, values_from = value, values_fn = sum) |>  #sum duplicates
   as.data.frame()
@@ -384,13 +546,13 @@ nrow(asvs_6mo) + nrow(asvs_12mo) #5315
 asvs <- read.delim("data/feat_table_taxon_full.tsv", skip = 1, sep = "\t", check.names = FALSE) |>
   as.data.frame() |>                                            # make it a dataframe
   rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>      # rename columns to not begin w/ integer
-  rename(ASV = "sample_ASV") |>
+  rename(asv = "sample_asv") |>
   rename(taxonomy = "sample_taxonomy") |>
   mutate(taxonomy = gsub(" ", "", taxonomy)) |>
-  select(ASV, taxonomy, everything())
+  select(asv, taxonomy, everything())
 nrow(asvs) #3998
 head(asvs)
-#                               ASV                                                                                                                   taxonomy  sample_10B1 sample_10C1 sample_10D1 sample_10E1 sample_10G1 sample_10H1
+#                               asv                                                                                                                   taxonomy  sample_10B1 sample_10C1 sample_10D1 sample_10E1 sample_10G1 sample_10H1
 #1 be940f3d627f5e7aee26e5f93995658c                         k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Rhynchogastremaceae;g__Papiliotrema         272           0         171          90         287          15
 #2 ea878a2bb3050c29de504f4c0ad4ed24    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Cryptococcaceae;g__Cryptococcus;s__Cryptococcus_watticus        3634          32          17         755         616         279
 #3 1fa535421f0269e28fe60ea966b9413c    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Filobasidiales;f__Filobasidiaceae;g__Naganishia;s__Naganishia_randhawae        1607          60          12        2225         357         481
@@ -402,13 +564,13 @@ head(asvs)
 taxtraits <- read.delim("data/fungal_traits.tsv", sep = "\t", check.names = FALSE) |>
   as.data.frame() |> 
   rename(taxonomy = "taxon") |> 
-  rename(ASV = "feature-id") |> 
+  rename(asv = "feature-id") |> 
   dplyr::mutate(across(everything(), ~na_if(trimws(.), "")))
 taxtraits <- taxtraits[-c(1), ]
 asvs$taxonomy <- stringr::str_trim(asvs$taxonomy)
 nrow(taxtraits) #3998
 head(taxtraits)
-#                               ASV                                                                                                                   taxonomy        confidence fungal_traits_genus      primary_lifestyle
+#                               asv                                                                                                                   taxonomy        confidence fungal_traits_genus      primary_lifestyle
 #2 be940f3d627f5e7aee26e5f93995658c                         k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Rhynchogastremaceae;g__Papiliotrema 0.999999999530847        Papiliotrema           mycoparasite
 #3 ea878a2bb3050c29de504f4c0ad4ed24    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Tremellales;f__Cryptococcaceae;g__Cryptococcus;s__Cryptococcus_watticus  0.99999902523924        Cryptococcus unspecified_saprotroph
 #4 1fa535421f0269e28fe60ea966b9413c    k__Fungi;p__Basidiomycota;c__Tremellomycetes;o__Filobasidiales;f__Filobasidiaceae;g__Naganishia;s__Naganishia_randhawae   0.9328056929248          Naganishia unspecified_saprotroph
@@ -418,7 +580,7 @@ head(taxtraits)
 
 ## Join tables (frequency/taxon and trait)
 traits <- left_join(asvs, taxtraits) |>
-  select("ASV", "taxonomy", "confidence", everything()) 
+  select("asv", "taxonomy", "confidence", everything()) 
 names(traits)
 head(traits)
 nrow(traits)
