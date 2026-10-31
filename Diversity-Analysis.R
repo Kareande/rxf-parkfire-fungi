@@ -200,7 +200,6 @@ frq_tbl |> summarise(.by = c(treatment, month, pair),               # group data
                                   size = rel(1.2)))                 # strip font size
 ggsave("figures/avg_abnd_dmbllplt.png")
 
-
 ## Visualize mean abundance per treatment pair over across timepoints, slope plot
 #and https://www.youtube.com/watch?v=z7Ci9NN3LUc&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=226
 frq_tbl |> summarise(.by = c(treatment, month, pair),                 # group data by treatment, pair, and month
@@ -221,7 +220,7 @@ frq_tbl |> summarise(.by = c(treatment, month, pair),                 # group da
        color = "Treatment Paired Site") +
   theme(plot.title.position = "plot",                                 # align title to plot
         plot.title = element_text(face = "bold",                      # make title bold
-                                  family = ftheme,                    # change title font
+                                  #family = ftheme,                    # change title font
                                   margin = margin(b=10)),             # change margin space (instead of \n)
         plot.caption = element_markdown(hjust = 0, color = ccap),     # move caption to be left-justified
         plot.caption.position = "plot",
@@ -230,7 +229,7 @@ frq_tbl |> summarise(.by = c(treatment, month, pair),                 # group da
 ggsave("figures/avg_abnd_slpplt.png")
 
 ## Visualize mean ASV counts per paired site
-frq_tbl |>                        # avg observations
+frq_tbl |>                                                           # avg observations
   summarise(.by = c(pair, treatment),
             avg_abnd = mean(abundance),
             se = sd(abundance) / sqrt(length(abundance))) |>
@@ -583,6 +582,7 @@ str(bray)                         # look at structure
 samples <- attr(bray, "Labels")   # access labels
 bray_tbl <- as_tibble(bray) |>
   cbind(samples)
+bray_tbl
 
 ## Create function to extract metadata from sample name
 sample_lookup <- function(df, sampleid) {
@@ -615,13 +615,14 @@ sample_lookup <- function(df, sampleid) {
                                          "RxF + Wildfire, July")))
 }
 
-## NMDS ordination using Bray matrix
+## NMDS ordination using Bray-Curtis distance matrix
 set.seed(10192026)
 nmds <- metaMDS(bray)
 captit <- "Matrix Used: <i>BrayCurtis</i>,Stress: <i>0.2119787</i>"
 plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
 ccap <- "#363535"
 
+## Plot NDMS ordination colored by treatment
 scores(nmds) |>   # by treatment
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
@@ -634,6 +635,7 @@ scores(nmds) |>   # by treatment
         plot.caption = element_markdown(hjust = 0, color = ccap), # move caption to be left-justified
         plot.caption.position = "plot")                       # align caption to plot
 
+## Plot NDMS ordination colored by month
 scores(nmds) |>   # by month
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
@@ -646,6 +648,7 @@ scores(nmds) |>   # by month
         plot.caption = element_markdown(hjust = 0, color = ccap), # move caption to be left-justified
         plot.caption.position = "plot")                       # align caption to plot
 
+## Plot NDMS ordination colored by treatment and month
 scores(nmds) |>   # by tmntmonth
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
@@ -664,6 +667,7 @@ scores(nmds) |>   # by tmntmonth
         axis.title.x = element_text(face = "bold"),
         axis.title.y = element_text(face = "bold"))
 
+## Plot NDMS ordination by site
 scores(nmds) |>   # by site
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
@@ -688,7 +692,7 @@ nmds_pos <- scores(nmds) |>           # use scores from NMDS section above
   as_tibble(rownames = "samples") |>  # convert to tibble df
   sample_lookup(sampleid = "samples") # use function defined in NMDS section
 
-## Get the correlation value for 
+## Get the correlation value for abundance of ASV and NMDS x-coordinate
 nmds_cor_x <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
   as.data.frame() |>
   rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>        # rename columns to not begin w/ integer
@@ -705,6 +709,7 @@ nmds_cor_x <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.n
   unnest(cor_x) |>
   select(asv, estimate, p.value)
 
+## Get the correlation value for abundance of ASV and NMDS y-coordinate
 nmds_cor_y <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
   as.data.frame() |>
   rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>        # rename columns to not begin w/ integer
@@ -721,14 +726,13 @@ nmds_cor_y <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.n
   unnest(cor_x) |>
   select(asv, estimate, p.value)
 
+## Join NMDS correlation x and y values
 nmds_cors <- inner_join(nmds_cor_x, nmds_cor_y, by = "asv") |> #2,902 rows
   #filter(p.value.x < 0.05 | p.value.y < 0.05) |> #417 rows
   #filter(p.value.x < 0.01 | p.value.y < 0.01) |> #171 rows
   filter(abs(estimate.x) > 0.5 | abs(estimate.y) > 0.5) #5 rows
 
-nmds_cors |> ggplot(aes(x = 0, xend = estimate.x, y = 0, yend = estimate.y)) +
-  geom_segment()
-
+## Plot the ASV correlation vectors over ordination
 nmds_pos |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = tmntmonth)) +
   geom_point() +
@@ -748,8 +752,8 @@ nmds_pos |>
                aes(x = 0, xend = estimate.x, y = 0, yend = estimate.y),
                inherit.aes = FALSE) +
   geom_text_repel(data = nmds_cors,
-            aes(x = estimate.x, y = estimate.y, label = asv),
-            inherit.aes = FALSE)
+                  aes(x = estimate.x, y = estimate.y, label = asv),
+                  inherit.aes = FALSE)
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -770,4 +774,6 @@ bray |>                                 # use distance matrix from NMDS section
   sample_lookup(sampleid = "name") |> # use function defined in NMDS section
   select(-tmntmonth) |>
   #filter(month_a == month & treatment_a != treatment)  # across treatments
-  filter(subsite_a == subsite)  # across months
+  filter(subsite_a == subsite) |>  # across months
+  ggplot(aes(x = subsite, y = value, group = site)) +
+  geom_line()
