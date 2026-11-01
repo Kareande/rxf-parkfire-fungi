@@ -12,6 +12,8 @@ library(viridis)     # colour palettes
 library(broom)       # for piping into tidy
 library(ggtext)      # formatting plot labels
 library(rstatix)     # stats package, anova_test
+library(nortest)     # anderson-darling test
+library(car)         # leverne test
 
 ## Set working directory
 wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
@@ -29,7 +31,7 @@ metadata <- read.delim("data/metadata_noctl.tsv", sep = "\t", check.names = FALS
   rename(month = "collectmonth") |>                   # rename sampleid column
   select(site, subsite, month, treatment, pair)             # select columns
 metadata <- metadata[-c(1), ]                         # remove Qiime2 formatting column
-glimpse(metadata) #subsite, metadata...
+glimpse(metadata) #subsite, metadata... (one row per subsite: 216)
 
 ## Create ASV abundance (count/observations) table from frequency table
 abund_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
@@ -38,7 +40,7 @@ abund_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.na
   pivot_longer(-asv,                                     # give subsites/samples their own columns
                names_to = "subsite",
                values_to = "abundance")
-glimpse(abund_tbl) #asv, subsite, abundance
+glimpse(abund_tbl) #asv, subsite, abundance (one row per asv*subsite: 2912*115=334,880)
 
 ## Create table of taxa/function assignments for ASVs
 taxon_code <- "g"                                                       # taxon of interest (k, p, c, o, f, g, or s)
@@ -53,35 +55,26 @@ taxa_tbl <- read.delim("data/fungal_traits.tsv", sep = "\t", check.names = FALSE
                         taxa)) |>                                       # if no taxon, extract next taxon
   select(asv, taxa, everything(), -taxonomy, -fungal_traits_genus)     # remove taxonomy column
 taxa_tbl <- taxa_tbl[-c(1), ]                                           # remove Qiime2 formatting column
-glimpse(taxa_tbl) #asv, taxa, functions...
+glimpse(taxa_tbl) #asv, taxa, functions... (one row per unique ASV: 3,998)
 #unique(taxa_tbl$taxa)
 
-## Composite taxa dataset
 composite <- abund_tbl |>
-  left_join(taxa_tbl, by = "asv") |>                   # add taxa/functional data to rarefied asv
-  inner_join(metadata, by = "subsite") |>              # add taxa/functional data to dataset
-  select(asv, taxa, subsite, treatment, pair, month, abundance, everything()) |>
-  summarize(.by = -asv, abundance = sum(abundance)) |> # calculate abundance of taxa per subsite
-  filter(abundance > 0)
-glimpse(composite)
-
-## Calculate relative abundance of each taxon by subsite
-rabnd_tbl <- composite |>
-  summarise(.by = c(taxa, site, subsite, treatment, month, pair),       # group data
-            abundance = sum(abundance)) |>                                   # mean rel abundance (%)
-  mutate(.by = subsite, rel.abund = ((abundance / sum(abundance)) * 100))
-glimpse(rabnd_tbl)
+  left_join(metadata, by = "subsite") |>        # add metadata to rarefied asv, which has 115/216 subsites (334,880 × 7)
+  left_join(taxa_tbl, by = "asv") |>            # add taxa/functional data to dataset (334,880 × 14)
+  summarize(.by = c(-asv, -abundance),
+            abundance = sum(abundance)) |>      # calculate abundance of taxa per subsite (68,195 × 13)
+  mutate(subsite = str_extract(subsite, "\\d+\\w"),     # extract through all digits and one word char
+         site = str_extract(subsite, "\\d+")) |> # extract through all digits
+  select(taxa, site, subsite,
+         treatment, pair, month,
+         abundance, everything())            # re-order columns
+glimpse(composite) #one row per unique taxa*subsite (68,195 × 13)
 
 ## Histogram
-ggplot(rabnd_tbl, aes(x = rel.abund)) +
-  geom_histogram()  # somewhat better
+ggplot(composite, aes(x = abundance)) +
+  geom_histogram()  # bad kertosis
 
-
-#----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------------- ABUNDANCE VISUALIZATIONS----------------------------------------------#
-#----------------------------------------------------------------------------------------------------------------------#
-
-## Determine taxon based on code in above section
+## Determine taxon based on code above
 if (taxon_code == "s") {
   taxon <- "Species"
 } else if (taxon_code == "g") {
@@ -98,27 +91,107 @@ if (taxon_code == "s") {
   taxon <- "Kingdom"
 }
 
-## Provide plot parameters
-plttit <- paste("Abundance of",
-                taxon,
-                "Across Paired Treatments and Months \n")             # designate plot title
-avg_plttit <- paste("Average Relative Abundance of",
-                taxon,
-                "Across Paired Treatments and Months \n")             # designate plot title
-xtit <- "\n Site Pair"                                                # designate x-title
-ytit <- paste(taxon, "Abundance \n")                                    # designate y-title
-avg_ytit <- "Average ASV Abundance \n"                                    # designate y-title
-ctheme <- c("#807d7d", "#ac2b2b")                                 # designate fill colors for treatments
-ctheme2 <- c("#008080", "#CC5500")                                # designate fill colors for months
-ccap <- "#4b4a4a"                                                   # designate caption font color
+## Create function to determine plot parameters
+# plt_params <- function(taxon_code, metric) {
+#     if (taxon_code == "s") {
+#     taxon <- "Species"
+#   } else if (taxon_code == "g") {
+#     taxon <- "Genus"
+#   } else if (taxon_code == "f") {
+#     taxon <- "Family"
+#   } else if (taxon_code == "o") {
+#     taxon <- "Order"
+#   } else if (taxon_code == "c") {
+#     taxon <- "Class"
+#   } else if (taxon_code == "p") {
+#     taxon <- "Phylum"
+#   } else {
+#     taxon <- "Kingdom"
+#   }
+#   plttit <- paste(taxon, metric, "Across Paired Treatments and Months \n")
+#   xtit <- "\n Site Pair"
+#   ytit <- paste(taxon, metric, "\n")
+#   metric <- metric
+# }
 
-## Visualize mean abundance per treatment pair over across timepoints, point range (alt to boxplot)
+## Designate plot color schemes
+ctheme <- c("#807d7d", "#ac2b2b")                                             # designate fill colors for treatments
+ctheme2 <- c("#008080", "#CC5500")                                            # designate fill colors for months
+ccap <- "#4b4a4a"                                                             # designate caption font color
+
+#----------------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------- TAXA RICHNESS ----------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+
+## Calculate/verify species richness (# of unique taxa per subsite)
+rich_tbl <- composite |>
+  summarise(.by = c(site, subsite, treatment, pair, month),  # group data
+            richness = specnumber(abundance)) |>             # calculate taxa richness
+  select(subsite, treatment, pair,                           # re-order columns
+         month, richness, everything())
+length(unique(filter(composite, subsite == "10B" & abundance > 0)$taxa)) #62
+length(unique(filter(composite, subsite == "11F" & abundance > 0)$taxa)) #54
+
+## Check for outliers (keep running until all identified/removed)
+identify_outliers(rich_tbl, richness) # one outlier
+#rich_tbl <- filter(rich_tbl, subsite != "3E")
+
+## Test normality (distribution assumption)
+rich <- rich_tbl$richness
+shapiro.test(rich)            #p = 0.3058 (g)
+ks.test(rich, "pnorm")        #p < 2.2e-16 (g)
+ad.test(rich)                 #p = 0.3567 (g)
+plot(density(rich))           #normalish (g)
+ggplot(rich_tbl, aes(sample = richness)) + #almost linear (g)
+  geom_qq() +
+  geom_qq_line()
+
+## Test homoscedasticity (variance assumption)
+ggplot(rich_tbl, aes(site, richness, group = treatment, color = treatment)) +
+  geom_jitter()
+leveneTest(richness ~ site, data = rich_tbl) #p = 0.701 (g)
+plot(rich)                      # variance fine (g)
+boxplot(rich)                   # symmetrical (g)
+
+## Histogram
+metric <- "Richness"
+plttit <- paste("Frequencies of", taxon, metric, "\n")   # designate plot title
+xtit <- paste(metric)                             # designate x-title
+ytit <- paste("Density \n")        # designate y-title
+plt_type <- "hist"
+breaks <- pretty(range(rich), n = nclass.FD(rich), min.n = 1) # Freedman-Diaconis algorithm
+bwidth <- breaks[2] - breaks[1]                                   # calculate ideal binwidth
+ggplot(rich_tbl) +
+  geom_histogram(aes(x = richness, y = ..density..),              # plot histogram scaled by density
+                 fill = "steelblue",
+                 colour = "black",
+                 binwidth = bwidth) +
+  labs(title = plttit,
+       x = xtit,
+       y = ytit) +
+  stat_function(fun = dnorm,                                      # graph normal distribution
+                args = list(mean = mean(rich_tbl$richness),
+                            sd = sd(rich_tbl$richness)))
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Visualize richness per treatment pair over across timepoints, point range (alt to boxplot)
 #inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
-composite |> mutate(month = factor(month,                                              # make month a factor
-                                   levels = c("Jan", "July"),                          # order the months
-                                   labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
-                                              "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
-  ggplot(aes(x = pair, y = abundance, color = treatment)) +
+metric <- "Richness"
+plttit <- paste(taxon, metric, "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                                        # designate x-title
+ytit <- paste(metric, "\n")
+plt_type <- "pntrng"
+rich_tbl |>
+  mutate(month = factor(month,                                              # make month a factor
+                        levels = c("Jan", "July"),                          # order the months
+                        labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
+                                   "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("Pair T", "Pair V", "Pair W",
+                                  "Pair X", "Pair V", "Pair Z"))) |>
+  ggplot(aes(x = pair, y = richness, color = treatment)) +
   facet_wrap(~ month, nrow = 1, scales = "free_x", strip.position = "bottom") +        # split plot by months
   stat_summary(fun.data = median_hilow,                                                # medians for points
                fun.args = list(conf.int = 0.5),                                        # confidence interval for range
@@ -155,10 +228,610 @@ composite |> mutate(month = factor(month,                                       
         strip.text = element_text(face = "bold",                     # strip font face
                                   colour = "black",                  # strip font color
                                   size = rel(1)))                    # strip font size
-ggsave(paste0("figures/abnd_", taxon, "_pntrngplt.png"))
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Designate plot labels
+metric <- "Mean Richness"
+plttit <- paste(metric, "of", taxon, "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                                        # designate x-title
+ytit <- paste(metric, "\n")
+
+## Visualize mean richness per paired site across timepoints
+plt_type <- "barplt"
+rich_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
+                      avg_rich = mean(richness),
+                      se = sd(richness) / sqrt(length(richness))) |>
+  mutate(month = factor(month,
+                        levels = c("Jan", "July"),
+                        labels = c("Samples Collected 6mo Post-fire",
+                                   "Samples Collected 12mo Post-fire"))) |>
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>
+  ggplot(aes(x = pair, y = avg_rich, fill = treatment)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_errorbar(aes(x = pair, ymin = avg_rich - se, ymax = avg_rich + se),
+                colour = "black",
+                alpha = 0.6,
+                size = 0.6,
+                position = position_dodge2(.9, padding = .6)) +
+  facet_grid(. ~ month)  +
+  scale_fill_manual(breaks = c("NoRxF", "RxF"),                      # color by month
+                    values = ctheme,                                 # bar fill colors
+                    labels = c("Wildfire Only", "RxF + Wildfire")) + # legend labels
+  labs(title = paste0(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = paste0(xtit),                                             # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       fill = NULL) +                                                # legend title
+  theme(text = element_text(size = 17),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.background = element_rect(fill = ctheme[1],            # strip background color
+                                        colour = "white"),           # strip border color
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  size = rel(0.8),                   # strip font size
+                                  colour = "white"))                 # strip font color
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Visualize mean richness per treatment pair over across timepoints, dumbell plot
+#and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
+plttit <- paste("Change in", metric, "of", taxon,
+                "Over 6 Months Across Paired Treatments \n")      # designate plot title
+plt_type <- "dmbll"
+rich_tbl |> summarise(.by = c(treatment, month, pair),            # group data
+                      avg.rich = mean(richness)) |>
+  pivot_wider(names_from = c(month),                              # use months for column titles
+              values_from = avg.rich) |>                          # widen for bump calcs (to offset label)
+  rename(avg.rich_Jan = "Jan", avg.rich_July = "July") |>         # rename so pivot_longer works easier
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>             # rename so pivot_longer works easier
+  mutate(bump_Jan = if_else(avg.rich_Jan > avg.rich_July,         # create bumps 2 to the left or right of points
+                            avg.rich_Jan + 2,
+                            avg.rich_Jan - 2),
+         bump_July = if_else(avg.rich_Jan > avg.rich_July,        # create bumps to the right or left of points
+                             avg.rich_July - 2,
+                             avg.rich_July + 2)) |>
+  pivot_longer(cols = c(avg.rich_Jan, avg.rich_July, bump_Jan, bump_July),
+               names_to = c(".value", "month"),                     # collapse into abnd or bump columns
+               names_sep = "_") |>
+  ggplot(aes(x = avg.rich, y = pair, color = month)) +
+  facet_wrap(~ treatment, nrow = 1, strip.position = "bottom") +    # split plots by treatment
+  geom_line(color = "black", linewidth = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
+  geom_point(size = 2.5) +                                          # add point of particular size
+  geom_text(aes(label = round(avg.rich, digits = 0), x = bump)) +   # label point w/ value at bump position
+  scale_color_manual(breaks = c("Jan", "July"),                     # color by month
+                     values = ctheme2,                              # point fill colors
+                     labels = c("January", "July")) +               # legend labels
+  labs(title = paste0(plttit),                                      # plot title
+       subtitle = NULL,                                             # plot subtitle
+       x = paste0(ytit),                                            # x-axis label
+       y = paste0(xtit),                                            # y-axis label
+       caption = "<i>Each 'dumbell' represents one site, of which contained 9 samples.</i>",
+       tag = "Figure X \n",                                         # tag label
+       color = NULL) +                                              # legend title
+  theme_classic() +                                                 # remove gray blocks from background
+  theme(plot.title.position = "plot",                               # align title to plot
+        plot.title = element_text(hjust = 0.5,                      # title justification
+                                  face = "bold",                    # title font face
+                                  family = NULL),                   # title font
+        axis.title.x = element_text(face = "bold",                  # x-axis font face
+                                    size = 14),                     # x-axis font size
+        axis.title.y = element_text(face = "bold",                  # y-axis font face
+                                    size = 14),                     # y-axis font size
+        plot.caption.position = "plot",                             # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                  # caption justification (markdown for HTML)
+                                        color = ccap),              # caption font color
+        legend.title = element_text(face = "bold",                  # legend face
+                                    size = 12),                     # legend font size
+        strip.background = element_rect(fill = "white",             # strip background color
+                                        colour = "black"),          # strip border color
+        strip.text = element_text(face = "bold",                    # strip font face
+                                  colour = "black",                 # strip font color
+                                  size = rel(1.2)))                 # strip font size
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
+#t.test: Is there is a difference between the mean differences in taxa richness for the treatments?
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the treatments?
+rich_ptable <- rich_tbl |>                                     # use richness table
+  summarise(.by = c(treatment, pair),                          # group data by treatment and pair
+            richness = sum(richness)) |>                       # count number of unique taxa for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = richness)  # seperate columns for treatment richness
+rich_ptable
+t.test(rich_ptable$NoRxF, rich_ptable$RxF, paired = TRUE)      #null accepted (g)
+wilcox.test(rich_ptable$NoRxF, rich_ptable$RxF, paired = TRUE) #null accepted (g)
+
+## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
+#t.test: Is there is a difference between the mean differences in taxa richness for the months?
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the months?
+rich_ptable2 <- rich_tbl |>                               # use richness table
+  summarise(.by = c(month, pair),                         # group data by month and pair
+            richness = sum(richness)) |>                  # count number of unique taxa for each month*pair
+  pivot_wider(names_from = month, values_from = richness) # seperate columns for month richness
+rich_ptable2
+t.test(rich_ptable2$Jan, rich_ptable2$July, paired = TRUE)      #null accepted (g)
+wilcox.test(rich_ptable2$Jan, rich_ptable2$July, paired = TRUE) #null accepted (g)
+
+## PARAMETRIC ANOVA repeated measures, NONPARAMETRIC Friedman Test
+#no benefit in choosing t.test vs ANOVA
+#anova: Is there a difference between the mean taxa richness for the treatments?
+#friedman: Is there a difference between the treatment rank sums?
+rich_gtable <- rich_tbl |>                          # use richness table
+  summarise(.by = c(treatment, month, pair),        # group data by treatment and month
+            richness = mean(richness))              # count number of unique taxa for each treatment*month
+print(rich_gtable, n = 24)
+aov_res <- anova_test(data = rich_gtable,           # fit a model, taxa richness in response to treatment
+                      dv = richness,                # dependant variable is count_asv
+                      wid = pair,                   # subject identified is site
+                      within = c(month, treatment))
+get_anova_table(aov_res)                            #null accepted (g)
+rich_gtbl <- rich_gtable |>                         # convert to matrix for Friedman Test
+  pivot_wider(names_from = c(treatment, month),     # seperate columns for treatment*month richness
+              values_from = richness)
+rich_gmtrx <- as.matrix(rich_gtbl[, 2:5])           # convert to matrix for Friedman Test
+rich_gmtrx
+friedman.test(rich_gmtrx)                           #null accepted (g)
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- SHANNON DIVERSITY --------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+
+## Calculate shannon diversity
+shan_tbl <- composite |>
+  filter(abundance > 0) |>
+  summarise(.by = c(site, subsite, treatment, pair, month),         # group data
+            shannon = diversity(abundance, index = "shannon")) |>   # calculate shannon diversity
+  select(site, subsite, treatment, pair,                            # re-order columns
+         month, shannon, everything())
+shan_tbl #one row per subsite (115 × 6)
+
+## Check for outliers (keep running until all identified/removed)
+identify_outliers(shan_tbl, shannon) #none
+
+## Test normality (distribution assumption)
+shan <- shan_tbl$shannon
+shapiro.test(shan)            #null rejected (g)
+ks.test(shan, "pnorm")        #null rejected (g)
+ad.test(shan)                 #null rejected (g)
+plot(density(shan))           #non-normal (g)
+ggplot(shan_tbl, aes(sample = shannon)) + #not linear(g)
+  geom_qq() +
+  geom_qq_line()
+
+## Test homoscedasticity (variance assumption)
+ggplot(shan_tbl, aes(site, shannon, group = treatment, color = treatment)) +
+  geom_jitter()
+leveneTest(shannon ~ site, data = shan_tbl) #null accepted (g)
+plot(shan)                      # variance poor (g)
+boxplot(shan)                   # non-symmetrical (g)
+
+## Histogram
+metric <- "Shannon Diversity"
+plttit <- paste("Frequencies of", taxon, metric, "\n")   # designate plot title
+xtit <- paste(metric)                             # designate x-title
+ytit <- paste("Density \n")        # designate y-title                          # designate y-title
+plt_type <- "hist"
+breaks <- pretty(range(shan), n = nclass.FD(shan), min.n = 1)     # Freedman-Diaconis algorithm
+bwidth <- breaks[2] - breaks[1]                                   # calculate ideal binwidth
+ggplot(shan_tbl) +
+  geom_histogram(aes(x = shannon, y = ..density..),               # plot histogram scaled by density
+                 fill = "steelblue",
+                 colour = "black",
+                 binwidth = bwidth) +
+  labs(title = plttit,
+       x = xtit,
+       y = ytit) +
+  stat_function(fun = dnorm,                                      # graph normal distribution
+                args = list(mean = mean(shan_tbl$shannon),
+                            sd = sd(shan_tbl$shannon)))
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Visualize shannon diversity per treatment pair over across timepoints, point range (alt to boxplot)
+#inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+metric <- "Shannon Diversity"
+plttit <- paste(metric, "of", taxon,
+                "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                        # designate x-title
+ytit <- paste(metric, "\n")                            # designate y-title
+plt_type <- "pntrng"
+shan_tbl |>
+  mutate(month = factor(month,                                              # make month a factor
+                        levels = c("Jan", "July"),                          # order the months
+                        labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
+                                   "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("Pair T", "Pair V", "Pair W",
+                                  "Pair X", "Pair V", "Pair Z"))) |> # renaming July for plots
+  ggplot(aes(x = pair, y = shannon, color = treatment)) +
+  facet_wrap(~ month, nrow = 1, scales = "free_x", strip.position = "bottom") +        # split plot by months
+  stat_summary(fun.data = median_hilow,                                                # medians for points
+               fun.args = list(conf.int = 0.5),                                        # confidence interval for range
+               geom = "pointrange",                                                    # point-range plot
+               position = position_dodge(width = 0.5)) +                               # plot treatments side-by-side
+  labs(title = paste(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = NULL,                                                     # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       color = NULL) +                                               # legend title
+  scale_color_manual(name = NULL,                                    # legend title
+                     breaks = c("NoRxF", "RxF"),                     # legend categories
+                     labels = c("Wildfire Only", "RxF + Wildfire"),  # legend category titles
+                     values = ctheme) +                              # line fill colors
+  theme(text = element_text(size = 14),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.placement = "outside",                                 # place strip below axis labels
+        strip.background = element_blank(),                          # remove facet strip fill
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  colour = "black",                  # strip font color
+                                  size = rel(1)))                    # strip font size
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Designate plot labels
+metric <- "Mean Shannon Diversity"
+plttit <- paste(metric, "of", taxon, "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                                        # designate x-title
+ytit <- paste(metric, "\n")
+
+## Visualize mean richness per paired site across timepoints
+plt_type <- "barplt"
+shan_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
+                     avg_shan = mean(shannon),
+                     se = sd(shannon) / sqrt(length(shannon))) |>
+  mutate(month = factor(month,
+                        levels = c("Jan", "July"),
+                        labels = c("Samples Collected 6mo Post-fire",
+                                   "Samples Collected 12mo Post-fire"))) |>
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>
+  ggplot(aes(x = pair, y = avg_shan, fill = treatment)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_errorbar(aes(x = pair, ymin = avg_shan - se, ymax = avg_shan + se),
+                colour = "black",
+                alpha = 0.6,
+                size = 0.6,
+                position = position_dodge2(.9, padding = .6)) +
+  facet_grid(. ~ month)  +
+  scale_fill_manual(breaks = c("NoRxF", "RxF"),                      # color by month
+                    values = ctheme,                                 # bar fill colors
+                    labels = c("Wildfire Only", "RxF + Wildfire")) + # legend labels
+  labs(title = paste0(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = paste0(xtit),                                             # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       fill = NULL) +                                                # legend title
+  theme(text = element_text(size = 17),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.background = element_rect(fill = ctheme[1],            # strip background color
+                                        colour = "white"),           # strip border color
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  size = rel(0.8),                   # strip font size
+                                  colour = "white"))                 # strip font color
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Visualize mean shannon diversity per treatment pair over across timepoints, dumbell plot
+#and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
+plttit <- paste("Change in", metric, "of", taxon,
+                "Over 6 Months Across Paired Treatments \n")      # designate plot title
+plt_type <- "dmbll"
+shan_tbl |> summarise(.by = c(treatment, month, pair),       # group data
+                      avg.shan = mean(shannon)) |>
+  pivot_wider(names_from = c(month),                                # use months for column titles
+              values_from = avg.shan) |>                            # widen for bump calcs (to offset label)
+  rename(avg.shan_Jan = "Jan", avg.shan_July = "July") |>            # rename so pivot_longer works easier
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>           # rename so pivot_longer works easier
+  mutate(bump_Jan = if_else(avg.shan_Jan > avg.shan_July,  # create bumps 2 to the left or right of points
+                            avg.shan_Jan + .05,
+                            avg.shan_Jan - .05),
+         bump_July = if_else(avg.shan_Jan > avg.shan_July, # create bumps 2 to the right or left of points
+                             avg.shan_July - .05,
+                             avg.shan_July + .05)) |>
+  pivot_longer(cols = c(avg.shan_Jan, avg.shan_July, bump_Jan, bump_July),
+               names_to = c(".value", "month"),                     # collapse into abnd or bump columns
+               names_sep = "_") |>
+  ggplot(aes(x = avg.shan, y = pair, color = month)) +
+  facet_wrap(~ treatment, nrow = 1, strip.position = "bottom") +    # split plots by treatment
+  geom_line(color = "black", linewidth = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
+  geom_point(size = 2.5) +                                          # add point of particular size
+  geom_text(aes(label = round(avg.shan, digits = 1), x = bump)) +   # label point w/ value at bump position
+  scale_color_manual(breaks = c("Jan", "July"),                     # color by month
+                     values = ctheme2,                              # point fill colors
+                     labels = c("January", "July")) +               # legend labels
+  labs(title = paste0(plttit),                                      # plot title
+       subtitle = NULL,                                             # plot subtitle
+       x = paste0(ytit),                                            # x-axis label
+       y = paste0(xtit),                                            # y-axis label
+       caption = "<i>Each 'dumbell' represents one site, of which contained 9 samples.</i>",
+       tag = "Figure X \n",                                         # tag label
+       color = NULL) +                                              # legend title
+  theme_classic() +                                                 # remove gray blocks from background
+  theme(plot.title.position = "plot",                               # align title to plot
+        plot.title = element_text(hjust = 0.5,                      # title justification
+                                  face = "bold",                    # title font face
+                                  family = NULL),                   # title font
+        axis.title.x = element_text(face = "bold",                  # x-axis font face
+                                    size = 14),                     # x-axis font size
+        axis.title.y = element_text(face = "bold",                  # y-axis font face
+                                    size = 14),                     # y-axis font size
+        plot.caption.position = "plot",                             # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                  # caption justification (markdown for HTML)
+                                        color = ccap),              # caption font color
+        legend.title = element_text(face = "bold",                  # legend face
+                                    size = 12),                     # legend font size
+        strip.background = element_rect(fill = "white",             # strip background color
+                                        colour = "black"),          # strip border color
+        strip.text = element_text(face = "bold",                    # strip font face
+                                  colour = "black",                 # strip font color
+                                  size = rel(1.2)))                 # strip font size
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## NONPARAMETRIC Wilcoxon signed-rank test
+#t.test: Is there is a difference between the mean differences in taxa richness for the treatments?
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the treatments?
+shan_ptable <- shan_tbl |>                                    # use richness table
+  summarise(.by = c(treatment, pair),                         # group data by treatment and pair
+            shannon = mean(shannon)) |>                       # count number of unique taxa for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = shannon)  # seperate columns for treatment richness
+shan_ptable
+wilcox.test(shan_ptable$NoRxF, shan_ptable$RxF, paired = TRUE) #null accepted (g)
+
+## NONPARAMETRIC Wilcoxon signed-rank test
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the months?
+shan_ptable2 <- shan_tbl |>                               # use richness table
+  summarise(.by = c(month, pair),                         # group data by month and pair
+            shannon = mean(shannon)) |>                   # count number of unique taxa for each month*pair
+  pivot_wider(names_from = month, values_from = shannon)  # seperate columns for month richness
+shan_ptable2
+wilcox.test(shan_ptable2$Jan, shan_ptable2$July, paired = TRUE) #null accepted (g)
+
+## NONPARAMETRIC Friedman Test
+#friedman: Is there a difference between the treatment rank sums?
+shan_gtable <- shan_tbl |>                        # use richness table
+  summarise(.by = c(treatment, month, pair),      # group data by treatment and month
+            shannon = mean(shannon))              # count number of unique taxa for each treatment*month
+print(shan_gtable, n = 24)
+shan_gtbl <- shan_gtable |>                       # convert to matrix for Friedman Test
+  pivot_wider(names_from = c(treatment, month),   # seperate columns for treatment*month richness
+              values_from = shannon)
+shan_gmtrx <- as.matrix(shan_gtbl[, 2:5])         # convert to matrix for Friedman Test
+shan_gmtrx
+friedman.test(shan_gmtrx)                         #null accepted (g)
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------------- ABUNDANCE VISUALIZATIONS ---------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+
+## Calculate relative abundance of each taxon by subsite
+rabnd_tbl <- composite |>
+  filter(abundance > 0) |>
+  summarise(.by = c(taxa, site, subsite, treatment, month, pair),       # group data
+            abundance = sum(abundance)) |>                              # mean rel abundance (%)
+  mutate(.by = subsite, rel.abund = ((abundance / sum(abundance)) * 100)) |>
+  select(-abundance) # (6,623 × 7)
+rabnd_tbl
+
+mrabnd_tbl <- rabnd_tbl |>
+  summarise(.by = c(site, subsite, treatment, month, pair),       # group data
+            mean.rabnd = mean(rel.abund))
+
+## Identify outliers
+ext <- identify_outliers(mrabnd_tbl, mean.rabnd) # (9 × 7)
+flt <- mrabnd_tbl |> left_join(ext, by = join_by(taxa, site, subsite, treatment,
+                                                month, pair, rel.abund)) |> # (6,623 × 9)
+  arrange(is.extreme)
+#flt <- flt[c(1:229, 1056:6623), ] |> select(-is.outlier, -is.extreme)
+
+## Test normality (distribution assumption)
+mrabnd <- mrabnd_tbl$mean.rabnd
+shapiro.test(mrabnd)            #null rejected (g)
+ks.test(mrabnd, "pnorm")        #null rejected (g)
+ad.test(mrabnd)                 #null rejected (g)
+plot(density(mrabnd))           #non-normal (g)
+ggplot(mrabnd_tbl, aes(sample = mean.rabnd)) + #not linear(g)
+  geom_qq() +
+  geom_qq_line()
+
+## Test homoscedasticity (variance assumption)
+ggplot(mrabnd_tbl, aes(site, mean.rabnd, group = treatment, color = treatment)) +
+  geom_jitter()
+leveneTest(mean.rabnd ~ site, data = mrabnd_tbl) #null accepted (g)
+plot(mrabnd)                      # variance poor (g)
+boxplot(mrabnd)                   # non-symmetrical (g)
+
+## Plot histogram
+metric <- "Mean Relative Abundance"
+plttit <- paste("Frequencies of", taxon, "Percent", metric, "\n")   # designate plot title
+xtit <- paste(metric, "(%)")                             # designate x-title
+ytit <- paste("Density \n")        # designate y-title                          # designate y-title
+plt_type <- "hist"
+breaks <- pretty(range(mrabnd), n = nclass.FD(mrabnd), min.n = 1) # Freedman-Diaconis algorithm
+bwidth <- breaks[2] - breaks[1]                                   # calculate ideal binwidth
+ggplot(mrabnd_tbl) +
+  geom_histogram(aes(x = mean.rabnd, y = ..density..),              # plot histogram scaled by density
+                 fill = "steelblue",
+                 colour = "black",
+                 binwidth = bwidth) +
+  labs(title = plttit,
+       x = xtit,
+       y = ytit) +
+  stat_function(fun = dnorm,                                      # graph normal distribution
+                args = list(mean = mean(mrabnd),
+                            sd = sd(mrabnd)))
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Provide plot parameters
+metric <- "Mean Relative Abundance"
+plttit <- paste("Percent", metric, "of", taxon,
+                "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                         # designate x-title
+ytit <- paste(metric, "(%)\n")                    # designate y-title
+
+## Visualize abundance per treatment pair over across timepoints, point range (alt to boxplot)
+#inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+plt_type <- "pntrng"
+mrabnd_tbl |>
+  mutate(month = factor(month,                                              # make month a factor
+                        levels = c("Jan", "July"),                          # order the months
+                        labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
+                                   "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
+  ggplot(aes(x = pair, y = mean.rabnd, color = treatment)) +
+  facet_wrap(~ month, nrow = 1, scales = "free_x", strip.position = "bottom") +        # split plot by months
+  stat_summary(fun.data = median_hilow,                                                # medians for points
+               fun.args = list(conf.int = 0.5),                                        # confidence interval for range
+               geom = "pointrange",                                                    # point-range plot
+               position = position_dodge(width = 0.5)) +                               # plot treatments side-by-side
+  labs(title = paste(plttit),                                        # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = NULL,                                                     # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       color = NULL) +                                               # legend title
+  scale_color_manual(name = NULL,                                    # legend title
+                     breaks = c("NoRxF", "RxF"),                     # legend categories
+                     labels = c("Wildfire Only", "RxF + Wildfire"),  # legend category titles
+                     values = ctheme) +                              # line fill colors
+  theme(text = element_text(size = 14),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.placement = "outside",                                 # place strip below axis labels
+        strip.background = element_blank(),                          # remove facet strip fill
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  colour = "black",                  # strip font color
+                                  size = rel(1)))                    # strip font size
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Visualize mean richness per paired site across timepoints
+plt_type <- "barplt"
+rabnd_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
+                       avg_rabnd = mean(rel.abund),
+                       se = sd(rel.abund) / sqrt(length(rel.abund))) |>
+  mutate(month = factor(month,
+                        levels = c("Jan", "July"),
+                        labels = c("Samples Collected 6mo Post-fire",
+                                   "Samples Collected 12mo Post-fire"))) |>
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>
+  ggplot(aes(x = pair, y = avg_rabnd, fill = treatment)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_errorbar(aes(x = pair, ymin = avg_rabnd - se, ymax = avg_rabnd + se),
+                colour = "black",
+                alpha = 0.6,
+                size = 0.6,
+                position = position_dodge2(.9, padding = .6)) +
+  facet_grid(. ~ month)  +
+  scale_fill_manual(breaks = c("NoRxF", "RxF"),                      # color by month
+                    values = ctheme,                                 # bar fill colors
+                    labels = c("Wildfire Only", "RxF + Wildfire")) + # legend labels
+  labs(title = paste0(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = paste0(xtit),                                             # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = "Figure X \n",                                          # tag label
+       fill = NULL) +                                                # legend title
+  theme(text = element_text(size = 17),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.background = element_rect(fill = ctheme[1],            # strip background color
+                                        colour = "white"),           # strip border color
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  size = rel(0.8),                   # strip font size
+                                  colour = "white"))                 # strip font color
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Visualize mean abundance per treatment pair over across timepoints, dumbell plot
 #and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
+plttit <- paste("Change in Percent", metric, "of", taxon,
+                "Over 6 Months Across Paired Treatments \n")      # designate plot title
+plt_type <- "dmbll"
 rabnd_tbl |>
   summarise(.by = c(treatment, month, pair),             # group data by treatment, pair, and month
             avg.rel.abund = mean(rel.abund)) |>                    # mean relative abundance (%)
@@ -182,7 +855,7 @@ rabnd_tbl |>
   scale_color_manual(breaks = c("Jan", "July"),                     # color by month
                      values = ctheme2,                              # point fill colors
                      labels = c("January", "July")) +               # legend labels
-  labs(title = paste0(avg_plttit),                                      # plot title
+  labs(title = paste0(plttit),                                      # plot title
        subtitle = NULL,                                             # plot subtitle
        x = paste0(ytit),                                            # x-axis label
        y = paste0(xtit),                                            # y-axis label
@@ -209,7 +882,49 @@ rabnd_tbl |>
         strip.text = element_text(face = "bold",                    # strip font face
                                   colour = "black",                 # strip font color
                                   size = rel(1.2)))                 # strip font size
-ggsave(paste0("figures/avg_relabnd_", taxon, "_dmbllplt.png"))
+ggsave(paste0("figures/", taxon, "_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
+#t.test: Is there is a difference between the mean differences in taxa richness for the treatments?
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the treatments?
+rich_ptable <- rich_tbl |>                                     # use richness table
+  summarise(.by = c(treatment, pair),                          # group data by treatment and pair
+            richness = sum(richness)) |>                       # count number of unique taxa for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = richness)  # seperate columns for treatment richness
+rich_ptable
+t.test(rich_ptable$NoRxF, rich_ptable$RxF, paired = TRUE)      #null accepted (g)
+wilcox.test(rich_ptable$NoRxF, rich_ptable$RxF, paired = TRUE) #null accepted (g)
+
+## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
+#t.test: Is there is a difference between the mean differences in taxa richness for the months?
+#wilcox: Is there a difference between the summed ranks of the differences in taxa richness for the months?
+rich_ptable2 <- rich_tbl |>                               # use richness table
+  summarise(.by = c(month, pair),                         # group data by month and pair
+            richness = sum(richness)) |>                  # count number of unique taxa for each month*pair
+  pivot_wider(names_from = month, values_from = richness) # seperate columns for month richness
+rich_ptable2
+t.test(rich_ptable2$Jan, rich_ptable2$July, paired = TRUE)      #null accepted (g)
+wilcox.test(rich_ptable2$Jan, rich_ptable2$July, paired = TRUE) #null accepted (g)
+
+## PARAMETRIC ANOVA repeated measures, NONPARAMETRIC Friedman Test
+#no benefit in choosing t.test vs ANOVA
+#anova: Is there a difference between the mean taxa richness for the treatments?
+#friedman: Is there a difference between the treatment rank sums?
+rich_gtable <- rich_tbl |>                          # use richness table
+  summarise(.by = c(treatment, month, pair),        # group data by treatment and month
+            richness = mean(richness))              # count number of unique taxa for each treatment*month
+print(rich_gtable, n = 24)
+aov_res <- anova_test(data = rich_gtable,           # fit a model, taxa richness in response to treatment
+                      dv = richness,                # dependant variable is count_asv
+                      wid = pair,                   # subject identified is site
+                      within = c(month, treatment))
+get_anova_table(aov_res)                            #null accepted (g)
+rich_gtbl <- rich_gtable |>                         # convert to matrix for Friedman Test
+  pivot_wider(names_from = c(treatment, month),     # seperate columns for treatment*month richness
+              values_from = richness)
+rich_gmtrx <- as.matrix(rich_gtbl[, 2:5])           # convert to matrix for Friedman Test
+rich_gmtrx
+friedman.test(rich_gmtrx)                           #null accepted (g)
 
 
 
@@ -218,24 +933,8 @@ ggsave(paste0("figures/avg_relabnd_", taxon, "_dmbllplt.png"))
 
 
 
-## Count unique taxa per subsite/sample (richness)
-rich_tbl <- composite |>                          # use freq table
-  summarise(.by = c(subsite, treatment,           # group data
-                    pair, month, primary_lifestyle),
-            count_asv = length(unique(taxa)))     # number of unique taxa per subsite
-rich_tbl
 
-## Mean observations of taxa per subsite/sample
-avg_tbl <- composite |>
-  summarise(.by = c(subsite, treatment, month, pair), # group data
-            avg_abnd = mean(abundance))                                           # avg observations
-avg_tbl
 
-## Mean observations per site
-avg_tbl_site <- frq_tbl |>
-  summarise(.by = c(site, treatment, month, pair, tmntpair),  # group data
-            avg_abnd = mean(abundance))                                   # avg observations
-avg_tbl_site
 
 ## Visualize mean asv counts per paired site across timepoints
 pasv_plot <- avg_tbl_site |>
