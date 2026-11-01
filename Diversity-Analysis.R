@@ -88,12 +88,17 @@ ggplot(frq_tbl, aes(x = abundance)) +
 
 
 #----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------------- ABUNDANCE VISUALIZATIONS----------------------------------------------#
+#----------------------------------------------- ABUNDANCE VISUALIZATIONS ---------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-#plttit <- "\n Average ASV Abundance Across Paired Treatments and Months \n"
-plttit <- "Average ASV Abundance Across Paired Treatments and Months \n" # designate plot title
+
+## Provide plot parameters
+metric <- "ASV Abundance"
+plttit <- paste(metric, "Across Paired Treatments and Months \n") # designate plot title
+avg_plttit <- paste("Mean", metric,
+                    "Across Paired Treatments and Months \n")
 xtit <- "\n Site Pair"                                                # designate x-title
-ytit <- "Average ASV Abundance \n"                                    # designate y-title
+ytit <- paste(metric, "\n")                                    # designate y-title
+avg_ytit <- paste("Mean", metric, "\n")                                    # designate y-title
 ctheme <- c("#807d7d", "#ac2b2b")                                 # designate fill colors for treatments
 ctheme2 <- c("#008080", "#CC5500")                                # designate fill colors for months
 ccap <- "#4b4a4a"                                                   # designate caption font color
@@ -105,6 +110,7 @@ ftheme <- "patua-one"                                                 # designat
 
 ## Visualize abundance per treatment pair over across timepoints, point range (alt to boxplot)
 #inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+plt_type <- "pntrng"
 frq_tbl |> mutate(month = factor(month,                                               # make month a factor
                                  levels = c("Jan", "July"),                           # order the months
                                  labels = c("Samples Collected 6mo Post-fire",        # renaming Jan for plots
@@ -146,10 +152,11 @@ frq_tbl |> mutate(month = factor(month,                                         
         strip.text = element_text(face = "bold",                     # strip font face
                                   colour = "black",                  # strip font color
                                   size = rel(1)))                    # strip font size
-ggsave("figures/abnd_pntrngplt.png")
+ggsave(paste0("figures/", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Visualize mean abundance per treatment pair over across timepoints, dumbell plot
 #and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
+plt_type <- "dmbll"
 frq_tbl |> summarise(.by = c(treatment, month, pair),               # group data by treatment, pair, and month
                      avg.abnd = mean(abundance)) |>                 # average abundance
   pivot_wider(names_from = c(month),                                # use months for column titles
@@ -274,7 +281,7 @@ frq_tbl |> summarise(.by = c(site, treatment, month, pair, tmntpair),       # gr
                         labels = c("Samples Collected 6mo Post-fire",
                                    "Samples Collected 12mo Post-fire"))) |>
   ggplot(aes(x = pair, y = avg_abnd, fill = treatment)) +
-  geom_col(position = "dodge", alpha = 0.9) +
+  geom_col(position = "dodge", alpha = 0.2) +
   geom_errorbar(aes(x = pair, ymin = avg_abnd - se, ymax = avg_abnd + se),
                 colour = "black",
                 alpha = 0.6,
