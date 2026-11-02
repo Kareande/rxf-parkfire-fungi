@@ -327,74 +327,226 @@ ggsave("figures/avg_abnd_barplt.png")
 #H0: The AVS counts do not differ across treatments
 #H1: The AVS counts are different for soil treated and not treated with RxF
 
+## Number of universal ASV
+freq_tbl_mnth <- frq_tbl |>
+  mutate(site = paste(site, treatment, pair, sep = "_")) |>
+  summarise(.by = c(asv, site, month),  # group data
+            abundance = sum(abundance)) |>
+  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
+
+sum(apply(filter(freq_tbl_mnth, month == "Jan") != 0, 1, all)) #40 ASV at all sites, Jan
+sum(apply(filter(freq_tbl_mnth, month == "July") != 0, 1, all)) #22 ASV at all sites, July
+
+isTRUE(
+  nrow(filter(freq_tbl_mnth, month == "July"))
+  ==
+    length(unique(filter(freq_tbl_mnth, month == "July")$asv))
+)
+
+freq_tbl_sites <- frq_tbl |>
+  mutate(site = paste(site, treatment, pair, sep = "_")) |>
+  summarise(.by = c(asv, site),  # group data
+            abundance = sum(abundance)) |>
+  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
+
+sum(apply(freq_tbl_sites != 0, 1, all)) #61 ASV at all sites
+
+freq_tbl_rxf <- frq_tbl |>
+  filter(treatment == "RxF") |>
+  mutate(site = paste(site, treatment, pair, sep = "_")) |>
+  summarise(.by = c(asv, site, treatment),  # group data
+            abundance = sum(abundance)) |>
+  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
+
+sum(apply(filter(freq_tbl_rxf, treatment == "RxF") != 0, 1, all)) #96 ASV at all RxF sites
+
+isTRUE(
+  nrow(filter(freq_tbl_rxf, treatment == "RxF"))
+  ==
+    length(unique(filter(freq_tbl_rxf, treatment == "RxF")$asv))
+)
+
+freq_tbl_norxf <- frq_tbl |>
+  filter(treatment == "NoRxF") |>
+  mutate(site = paste(site, treatment, pair, sep = "_")) |>
+  summarise(.by = c(asv, site, treatment),  # group data
+            abundance = sum(abundance)) |>
+  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
+
+sum(apply(filter(freq_tbl_norxf, treatment == "NoRxF") != 0, 1, all)) #72 ASV at all NoRxF sites
+
+isTRUE(
+  nrow(filter(freq_tbl_norxf, treatment == "NoRxF"))
+  ==
+    length(unique(filter(freq_tbl_norxf, treatment == "NoRxF")$asv))
+)
+
+## Number of unique ASV
+freq_tbl_tmnt <- frq_tbl |>
+  summarise(.by = c(asv, treatment),  # group data
+            abundance = sum(abundance)) |>
+  pivot_wider(names_from = treatment, values_from = abundance, values_fill = 0)
+
+sum(apply(freq_tbl_tmnt != 0, 1, all)) #852 ASV present in both treatments
+nrow(filter(freq_tbl_tmnt, RxF != 0 & NoRxF == 0)) #1020 ASV only exist in RxF
+nrow(filter(freq_tbl_tmnt, RxF == 0 & NoRxF != 0)) #1040 ASV only exist in NoRxF
+
+## ASV across paired sites
+for (pairs in unique(frq_tbl$pair)){
+
+  filt_freq <- frq_tbl |>
+    filter(pair == pairs) |>
+    mutate(pair = paste(treatment, pair, sep = "_")) |>
+    summarise(.by = c(asv, pair),
+              abundance = sum(abundance)) |>
+    pivot_wider(names_from = pair, values_from = abundance, values_fill = 0)
+
+  tot <- length(unique(filt_freq$asv))
+  p_name <- names(filt_freq)
+  print(paste("--- Now comparing pairs", p_name[2], "and", p_name[3],
+              "which have", tot, "unique ASV ---"))
+
+  p_all <- sum(apply(filt_freq != 0, 1, all))
+  print(paste(p_all, "ASV present in both paired sites - ", (p_all/tot)*100, "%"))
+
+  p_p1 <- nrow(filter(filt_freq, filt_freq[2] != 0 & filt_freq[3] == 0))
+  p_p2 <- nrow(filter(filt_freq, filt_freq[2] == 0 & filt_freq[3] != 0))
+  print(paste(p_p1, "ASV present in only", p_name[2], (p_p1/tot)*100, "%"))
+  print(paste(p_p2, "ASV present in only", p_name[3], (p_p2/tot)*100, "%"))
+
+}
+rm(filt_freq)
+
 ## Count unique ASVs per subsite/sample (richness)
-rich_tbl <- frq_tbl |>                           # use freq table
-  summarise(.by = c(site, subsite, treatment,    # group data
+rich_tbl <- frq_tbl |>                              # use freq table
+  summarise(.by = c(site, subsite, treatment,       # group data
                     pair, tmntpair, month),
-            count_asv = length(unique(asv)))     # number of unique ASV per subsite
+            richness = length(unique(asv)))        # number of unique ASV per subsite
 rich_tbl
 
-## Check for outliers (keep running until all identified/removed)
-identify_outliers(rich_tbl, count_asv)
+rich_tbl_6mo <- frq_tbl |>                          # use freq table
+  summarise(.by = c(site, subsite, treatment,       # group data
+                    pair, tmntpair, month),
+            richness = length(unique(asv))) |>     # number of unique ASV per subsite
+  filter(month == "Jan")
+rich_tbl_6mo
+
+rich_tbl_12mo <- frq_tbl |>                         # use freq table
+  summarise(.by = c(site, subsite, treatment,       # group data
+                    pair, tmntpair, month),
+            richness = length(unique(asv))) |>     # number of unique ASV per subsite
+  filter(month == "July")
+rich_tbl_12mo
+
+## Check for outliers
+identify_outliers(rich_tbl, richness)
 rich_tbl <- filter(rich_tbl, subsite != "3E")  #had to remove 3E, 12R, 3D
 rich_tbl <- filter(rich_tbl, subsite != "12R") #had to remove 3E, 12R, 3D
 rich_tbl <- filter(rich_tbl, subsite != "3D")  #had to remove 3E, 12R, 3D
 
+identify_outliers(rich_tbl_6mo, richness)  #none
+
+identify_outliers(rich_tbl_12mo, richness) #3E
+
 ## Test normality (distribution assumption)
-shapiro.test(rich_tbl$count_asv)            #p = 0.5808, null accepted
-ks.test(rich_tbl$count_asv, "pnorm")        #p < 2.2e-16, null rejected
-ad.test(rich_tbl$count_asv)                 #p = 0.4196, null accepted
-plot(density(rich_tbl$count_asv))           # plot density, normalish
-ggplot(rich_tbl, aes(sample = count_asv)) + # plot Q-Q plot, almost linear
+shapiro.test(rich_tbl$richness)            #p = 0.5808, null accepted
+ks.test(rich_tbl$richness, "pnorm")        #p < 2.2e-16, null rejected
+ad.test(rich_tbl$richness)                 #p = 0.4196, null accepted
+plot(density(rich_tbl$richness))           # plot density, normalish
+ggplot(rich_tbl, aes(sample = richness)) + # plot Q-Q plot, almost linear
+  geom_qq() +
+  geom_qq_line()
+
+shapiro.test(rich_tbl_6mo$richness)            #p = 0.5808, null accepted
+ks.test(rich_tbl_6mo$richness, "pnorm")        #p < 2.2e-16, null rejected
+ad.test(rich_tbl_6mo$richness)                 #p = 0.4196, null accepted
+plot(density(rich_tbl_6mo$richness))           # plot density, normalish
+ggplot(rich_tbl_6mo, aes(sample = richness)) + # plot Q-Q plot, almost linear
+  geom_qq() +
+  geom_qq_line()
+
+shapiro.test(rich_tbl_12mo$richness)            #p = 0.5808, null accepted
+ks.test(rich_tbl_12mo$richness, "pnorm")        #p < 2.2e-16, null rejected
+ad.test(rich_tbl_12mo$richness)                 #p = 0.4196, null accepted
+plot(density(rich_tbl_12mo$richness))           # plot density, normalish
+ggplot(rich_tbl_12mo, aes(sample = richness)) + # plot Q-Q plot, almost linear
   geom_qq() +
   geom_qq_line()
 
 ## Test homoscedasticity (variance assumption)
-ggplot(rich_tbl, aes(site, count_asv, group = treatment, color = treatment)) +
+ggplot(rich_tbl, aes(site, richness, group = treatment, color = treatment)) +
   geom_jitter()
-leveneTest(count_asv ~ site, data = rich_tbl) #p = 0.7731, null accepted
-plot(rich_tbl$count_asv)                      # plot variance, fine
-boxplot(rich_tbl$count_asv)                   # plot spread, almost symmetrical
+leveneTest(richness ~ site, data = rich_tbl) #p = 0.7731, null accepted
+plot(rich_tbl$richness)                      # plot variance, fine
+boxplot(rich_tbl$richness)                   # plot spread, almost symmetrical
 
 ## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
 #t.test: Is there is a difference between the mean differences in ASV counts for the treatments?
 #wilcox: Is there a difference between the summed ranks of the differences in ASV counts for the treatments?
 count_ptable <- rich_tbl |>                                      # use count table
   summarise(.by = c(treatment, pair),                            # group data by treatment and pair
-            count_asv = sum(count_asv)) |>                       # count number of unique ASV for each treatment*pair
-  pivot_wider(names_from = treatment, values_from = count_asv)   # seperate columns for treatment counts
+            mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
 count_ptable
 t.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE)      #p = 0.8132, null accepted
 wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p = 0.6875, null accepted
+
+count_ptable <- rich_tbl_6mo |>                                      # use count table
+  summarise(.by = c(treatment, pair),                            # group data by treatment and pair
+            mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
+count_ptable
+wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p =
+
+count_ptable <- rich_tbl_12mo |>                                      # use count table
+  summarise(.by = c(treatment, pair),                            # group data by treatment and pair
+            mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
+  pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
+count_ptable
+wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p =
 
 ## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
 #t.test: Is there is a difference between the mean differences in ASV counts for the months?
 #wilcox: Is there a difference between the summed ranks of the differences in ASV counts for the months?
 count_ptable2 <- rich_tbl |>                               # use count table
   summarise(.by = c(month, pair),                          # group data by month and pair
-            count_asv = sum(count_asv)) |>                 # count number of unique ASV for each month*pair
-  pivot_wider(names_from = month, values_from = count_asv) # seperate columns for month counts
+            mean_rich = mean(richness)) |>                 # count number of unique ASV for each month*pair
+  pivot_wider(names_from = month, values_from = mean_rich) # seperate columns for month counts
 count_ptable2
 t.test(count_ptable2$Jan, count_ptable2$July, paired = TRUE)      #p = 0.5118, null accepted
-wilcox.test(count_ptable2$Jan, count_ptable2$July, paired = TRUE) #p = 0.5625, null accepted
 
 ## PARAMETRIC ANOVA repeated measures, NONPARAMETRIC Friedman Test
 #no benefit in choosing t.test vs ANOVA
 #anova: Is there a difference between the mean ASV counts for the treatments?
 #friedman: Is there a difference between the treatment rank sums?
-count_gtable <- rich_tbl |>                         # use count table
-  summarise(.by = c(treatment, month, pair),        # group data by treatment and month
-            count_asv = mean(count_asv))            # count number of unique ASV for each treatment*month
+count_gtable <- rich_tbl |>                    # use count table
+  summarise(.by = c(treatment, month, pair),   # group data by treatment and month
+            mean_rich = mean(richness))       # count number of unique ASV for each treatment*month
 print(count_gtable, n = 24)
-aov_res <- anova_test(data = count_gtable,          # fit a model, ASV richness in response to treatment
-                      dv = count_asv,               # dependant variable is count_asv
-                      wid = pair,                   # subject identified is site
-                      within = c(month, treatment))
-get_anova_table(aov_res)                            #p > 0.05, null accepted
-count_gtbl <- count_gtable |>                       # convert to matrix for Friedman Test
+aov_res <- count_gtable |>
+  anova_test(mean_rich ~ treatment * month + Error(pair / (treatment * month)))
+get_anova_table(aov_res)                       #p > 0.05, null accepted
+
+count_gtable2 <- rich_tbl |>                   # use count table
+  summarise(.by = c(site, treatment, month),   # group data by treatment and month
+            mean_rich = mean(richness))       # count number of unique ASV for each treatment*month
+print(count_gtable2, n = 24)
+aov_res <- aov(mean_rich ~ treatment * month + Error(site / (month)), count_gtable2)
+summary(aov_res)                               #p > 0.05, null accepted
+
+count_gtable2 |>
+  summarise(.by = c(treatment, month), mean_rich = mean(richness)) |>
+  ggplot(aes(treatment, y = mean_rich, group = month, color = month, linetype = month)) +
+  geom_point(size = 2) +
+  geom_line(size = 1) +
+  theme_bw() + theme(legend.position = "top") +
+  labs(x = "Treatment", y = "Mean Richness",
+       title = "Interaction Plot for Treatment and Month")
+
+count_gtable3 <- count_gtable |>                      # convert to matrix for Friedman Test
   pivot_wider(names_from = c(treatment, month),     # seperate columns for treatment*month counts
               values_from = count_asv)
-count_gmtrx <- as.matrix(count_gtbl[, 2:5])         # convert to matrix for Friedman Test
+count_gmtrx <- as.matrix(count_gtable3[, 2:5])         # convert to matrix for Friedman Test
 count_gmtrx
 friedman.test(count_gmtrx)                          #p = 0.7055, null accepted
 
@@ -402,10 +554,13 @@ friedman.test(count_gmtrx)                          #p = 0.7055, null accepted
 # Data is normal enough to justify using parametric tests. Did both, but will only use parametric results.
 # There is no support for the hypothesis that ASV richness is different between treatments, timepoints, nor
 # treatments across timepoints.
+# 2-way indep ANOVA: continuous dep var, two factors (tmnt*month), repeat obs on subject (pair for month and tmnt)
+# one formula adds in the pair association, but the site diff is lost
+# other formula accounts for only re-measures of site, but paired association is lost
 
 ## Test timepoint difference Roualdes' way
 ## Does the mean differences in ASV counts significantly differ across treatments (all sites) or pairs?
-diff_table <- count_gtbl |>                                      # use Friedman Test table
+diff_table <- count_gtable3 |>                                      # use Friedman Test table
   mutate(NoRxF_diff = NoRxF_July - NoRxF_Jan, pair,              # subtract Jan counts from July
          RxF_diff = RxF_July - RxF_Jan) |>
   select(pair, RxF_diff, NoRxF_diff) |>
@@ -418,10 +573,70 @@ diff_table
 ## PARAMETRIC ANOVA, NONPARAMETRIC Kruskal-Wallis
 #anova test sig diff between the means by analyzing variance
 fit <- lm(diff_asv ~ treatment, data = diff_table)    # fit model, difference in response to tretament
-anova(fit)                                            #p = 0.03106, null rejected
+anova(fit)                                            #p = 0.03106, null rejected (IF extreme removed)
 
-## Post-hoc test for above
-
+## Visualize mean richness per paired site across timepoints
+ctheme <- c("#807d7d", "#ac2b2b")                                             # designate fill colors for treatments
+ctheme2 <- c("#008080", "#CC5500")                                            # designate fill colors for months
+ccap <- "#4b4a4a" 
+metric <- "Mean Richness"
+plttit <- paste(metric, "of ASV Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                                        # designate x-title
+ytit <- paste(metric, "\n")
+capt <- paste("ANOVA results: n = 24, Treatment (p = 0.272), Month (p = 0.118), Treatment*Month (p = 0.323) \n",
+              "Wilcoxon Signed-Rank Test results: n = 6, 6mo Treatment (p = 1), 12mo Treatment (p = 31)")
+plt_type <- "barplt"
+rich_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
+                      avg_rich = mean(richness),
+                      se = sd(richness) / sqrt(length(richness))) |>
+  mutate(month = factor(month,
+                        levels = c("Jan", "July"),
+                        labels = c("Samples Collected 6mo Post-fire",
+                                   "Samples Collected 12mo Post-fire"))) |>
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("T", "V", "W",
+                                  "X", "Y", "Z"))) |>
+  ggplot(aes(x = pair, y = avg_rich, fill = treatment)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_errorbar(aes(x = pair, ymin = avg_rich - se, ymax = avg_rich + se),
+                colour = "black",
+                alpha = 0.6,
+                size = 0.6,
+                position = position_dodge2(.9, padding = .6)) +
+  facet_grid(. ~ month)  +
+  scale_fill_manual(breaks = c("NoRxF", "RxF"),                      # color by month
+                    values = ctheme,                                 # bar fill colors
+                    labels = c("Wildfire Only", "RxF + Wildfire")) + # legend labels
+  labs(title = paste0(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = xtit,                                             # x-axis label
+       y = ytit,                                             # y-axis label
+       caption = NULL,
+       tag = NULL,                                          # tag label
+       fill = NULL) +                                                # legend title
+  theme(text = element_text(size = 17),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.background = element_rect(fill = ctheme[1],            # strip background color
+                                        colour = "white"),           # strip border color
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  size = rel(0.8),                   # strip font size
+                                  colour = "white"))                 # strip font color
+ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 
 ## NOTE:
@@ -556,6 +771,63 @@ smp_gmtrx <- as.matrix(smp_gtable[, 2:5])       # convert to matrix for Friedman
 smp_gmtrx
 friedman.test(smp_gmtrx)                        #p = 0.9776, null accepted
 
+## Visualize shannon diversity per treatment pair over across timepoints, point range (alt to boxplot)
+#inspired by https://www.youtube.com/watch?v=KoAJZYEOwSE&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=240
+metric <- "Shannon Diversity"
+plttit <- paste(metric, "of ASV",
+                "Across Paired Treatments and Months \n")      # designate plot title
+xtit <- "\n Site Pair"                                        # designate x-title
+ytit <- paste(metric, "\n")                            # designate y-title
+plt_type <- "pntrng"
+shn_tbl |>
+  mutate(month = factor(month,                                              # make month a factor
+                        levels = c("Jan", "July"),                          # order the months
+                        labels = c("Samples Collected 6mo Post-fire",       # renaming Jan for plots
+                                   "Samples Collected 12mo Post-fire"))) |> # renaming July for plots
+  mutate(pair = factor(pair,
+                       levels = c("PairT", "PairV", "PairW",
+                                  "PairX", "PairY", "PairZ"),
+                       labels = c("Pair T", "Pair V", "Pair W",
+                                  "Pair X", "Pair V", "Pair Z"))) |> # renaming July for plots
+  ggplot(aes(x = pair, y = shannon, color = treatment)) +
+  facet_wrap(~ month, nrow = 1, scales = "free_x", strip.position = "bottom") +        # split plot by months
+  stat_summary(fun.data = median_hilow,                                                # medians for points
+               fun.args = list(conf.int = 0.5),                                        # confidence interval for range
+               geom = "pointrange",                                                    # point-range plot
+               position = position_dodge(width = 0.5)) +                               # plot treatments side-by-side
+  labs(title = paste(plttit),                                       # plot title
+       subtitle = NULL,                                              # plot subtitle
+       x = NULL,                                                     # x-axis label
+       y = paste0(ytit),                                             # y-axis label
+       caption = NULL,
+       tag = NULL,                                          # tag label
+       color = NULL) +                                               # legend title
+  scale_color_manual(name = NULL,                                    # legend title
+                     breaks = c("NoRxF", "RxF"),                     # legend categories
+                     labels = c("Wildfire Only", "RxF + Wildfire"),  # legend category titles
+                     values = ctheme) +                              # line fill colors
+  theme(text = element_text(size = 14),                              # Overall text size
+        plot.title.position = "plot",                                # align title to plot
+        plot.title = element_text(hjust = 0.5,                       # title justification
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font
+        axis.title.x = element_text(face = "bold",                   # x-axis font face
+                                    size = rel(1)),                  # x-axis font size
+        axis.title.y = element_text(face = "bold",                   # y-axis font face
+                                    size = rel(1)),                  # y-axis font size
+        plot.caption.position = "plot",                              # align caption to plot
+        plot.caption = element_markdown(hjust = 0,                   # caption justification (markdown for HTML)
+                                        size = rel(0.6),             # caption font size
+                                        color = ccap),               # caption font color
+        legend.title = element_text(face = "bold",                   # legend face
+                                    size = rel(1)),                  # legend font size
+        strip.placement = "outside",                                 # place strip below axis labels
+        strip.background = element_blank(),                          # remove facet strip fill
+        strip.text = element_text(face = "bold",                     # strip font face
+                                  colour = "black",                  # strip font color
+                                  size = rel(1)))                    # strip font size
+ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
 ## NOTE:
 # There is no evidence to support that simpson or shannon diversity differ across treatments, timepoints,
 # or between treatments across timepoints.
@@ -625,9 +897,25 @@ sample_lookup <- function(df, sampleid) {
 ## NMDS ordination using Bray-Curtis distance matrix
 set.seed(10192026)
 nmds <- metaMDS(bray)
+metric <- "Bray Curtis Distance"
 captit <- "Matrix Used: <i>BrayCurtis</i>,Stress: <i>0.2119787</i>"
 plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
 ccap <- "#363535"
+plt_type <- "ordntn"
+
+## Plot NDMS ordination by site
+scores(nmds) |>   # by site
+  as_tibble(rownames = "samples") |>
+  sample_lookup(sampleid = "samples") |>
+  ggplot(aes(x = NMDS1, y = NMDS2, color = site)) +
+  geom_point() +
+  scale_color_brewer(palette = "Paired") +
+  labs(title = plttit,
+       caption = captit) +
+  theme(plot.title.position = "plot",                         # align title to plot
+        plot.title = element_text(face = "bold"),             # make title bold
+        plot.caption = element_markdown(hjust = 0, color = ccap), # move caption to be left-justified
+        plot.caption.position = "plot")                       # align caption to plot
 
 ## Plot NDMS ordination colored by treatment
 scores(nmds) |>   # by treatment
@@ -656,14 +944,22 @@ scores(nmds) |>   # by month
         plot.caption.position = "plot")                       # align caption to plot
 
 ## Plot NDMS ordination colored by treatment and month
-scores(nmds) |>   # by tmntmonth
+meta_nmds <- scores(nmds) |>   # by tmntmonth
   as_tibble(rownames = "samples") |>
-  sample_lookup(sampleid = "samples") |>
+  sample_lookup(sampleid = "samples")
+centroid <- meta_nmds |>
+  summarize(.by = c(treatment, month, tmntmonth),
+            NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+meta_nmds |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = tmntmonth)) +
   geom_point() +
-  geom_text(aes(label = subsite), position = "nudge") +    # label point w/ site
+  stat_ellipse(alpha = 0.23, show.legend = FALSE) +
+  geom_point(data = centroid, size = 5, shape = 21, color = "black",
+             aes(fill = tmntmonth), show.legend = FALSE) +
+  #geom_text(aes(label = subsite), position = "nudge") +    # label point w/ site
   scale_color_manual(values = c("#202020", "#a7a3a3", "#ac2b2b", "#f38383"),
                      name = NULL) +
+  scale_fill_manual(values = c("#202020", "#a7a3a3", "#ac2b2b", "#f38383")) +
   labs(title = plttit,
        caption = captit) +
   theme_minimal() +
@@ -673,21 +969,14 @@ scores(nmds) |>   # by tmntmonth
         plot.caption.position = "plot",                           # align caption to plot
         axis.title.x = element_text(face = "bold"),
         axis.title.y = element_text(face = "bold"))
+ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
-## Plot NDMS ordination by site
-scores(nmds) |>   # by site
-  as_tibble(rownames = "samples") |>
-  sample_lookup(sampleid = "samples") |>
-  ggplot(aes(x = NMDS1, y = NMDS2, color = site)) +
-  geom_point() +
-  scale_color_brewer(palette = "Paired") +
-  labs(title = plttit,
-       caption = captit) +
-  theme(plot.title.position = "plot",                         # align title to plot
-        plot.title = element_text(face = "bold"),             # make title bold
-        plot.caption = element_markdown(hjust = 0, color = ccap), # move caption to be left-justified
-        plot.caption.position = "plot")                       # align caption to plot
-
+## Test variation with ADONIS
+blc <- with(meta_nmds, how(nperm = 999, blocks = site))
+adonis2(bray ~ treatment*month, data = meta_nmds, permutations = blc)
+# or
+ord <- dbrda(bray ~ treatment*month + Condition(site), data = meta_nmds, method = "bray") 
+anova(ord, permutations = blc )`
 
 #----------------------------------------------------------------------------------------------------------------------#
 #----------------------------------------------- BETA DIVERSITY; BIPLOT -----------------------------------------------#
@@ -785,3 +1074,36 @@ bray |>                                                # use distance matrix fro
   filter(subsite_a == subsite) |>                      # across months
   ggplot(aes(x = subsite, y = value, group = site)) +
   geom_line()
+
+
+mice_dist %>%
+  as.matrix() %>%
+  as_tibble(rownames = "samples") %>%
+  pivot_longer(-samples) %>%
+  filter(samples < name) %>%
+  separate(samples, into=c("animal_a", "day_a"), "D", convert=TRUE) %>%
+  separate(name, into=c("animal_b", "day_b"), "D", convert=TRUE) %>%
+  mutate(comparison = case_when(
+    animal_a != animal_b & day_a == 9 & day_a == day_b ~ "early",
+    animal_a != animal_b & day_a == 141 & day_a == day_b ~ "late",
+    animal_a == animal_b & day_a == 141 & day_b == 9 ~ "same",
+    TRUE ~ NA_character_),
+    comparison = factor(comparison, levels=c("same", "early", "late"))
+    ) %>% 
+  drop_na() %>%
+  ggplot(aes(x=comparison, y=value)) +
+  geom_jitter(width=0.25, color="gray") +
+  stat_summary(fun.data=median_hilow, color="red", size=1,
+               fun.args = list(conf.int=0.50)) +
+  labs(x=NULL, y="Bray-Curtis distances")+
+  scale_x_discrete(breaks=c("early", "late", "same"),
+                   labels=c("Inter-mouse\ndistances at\n9 dpw",
+                            "Inter-mouse\ndistances at\n141 dpw",
+                            "Intra-mouse\ndistances between\n9 and 141 dpw")) +
+  scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
+  theme_classic()
+
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------- DISTANCES HEAT MAP ------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#inspired by https://youtu.be/3iOTGaWQZp4?si=O29mkcGqjXHdx2NC

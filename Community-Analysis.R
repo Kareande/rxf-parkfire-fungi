@@ -123,6 +123,20 @@ ccap <- "#4b4a4a"                                                             # 
 #--------------------------------------------------- TAXA RICHNESS ----------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 
+## Determine list of taxa per site
+for (sites in unique(composite$site)){
+
+  filt_freq <- composite |>
+    filter(site == sites) |>
+    summarise(.by = c(taxa, site, treatment, pair, month),  # group data
+              abundance = sum(abundance)) |>
+    pivot_wider(names_from = month, values_from = abundance)
+
+  assign(paste0("s", sites), filt_freq)
+
+  rm(filt_freq)
+}
+
 ## Calculate/verify species richness (# of unique taxa per subsite)
 rich_tbl <- composite |>
   summarise(.by = c(site, subsite, treatment, pair, month),  # group data
