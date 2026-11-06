@@ -157,24 +157,31 @@ ggsave(paste0("figures/", str_replace_all(metric, " ", "_"), "_", plt_type, ".pn
 ## Visualize mean abundance per treatment pair over across timepoints, dumbell plot
 #and https://www.youtube.com/watch?v=qaksmQabMUI&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=236
 plt_type <- "dmbll"
+metric <- "Mean Abundance"
+plttit <- paste(metric, "of ASV Across Paired Treatments and Months \n") # designate plot title
+avg_plttit <- paste("Mean", metric,
+                    "Across Paired Treatments and Months \n")
+xtit <- "\n Site Pair"                                                # designate x-title
+ytit <- paste(metric, "\n")                                    # designate y-title
+avg_ytit <- paste("Mean", metric)
 frq_tbl |> summarise(.by = c(treatment, month, pair),               # group data by treatment, pair, and month
                      avg.abnd = mean(abundance)) |>                 # average abundance
   pivot_wider(names_from = c(month),                                # use months for column titles
               values_from = avg.abnd) |>                            # widen for bump calcs (to offset label)
   rename(abnd_Jan = "Jan", abnd_July = "July") |>                   # rename so pivot_longer works easier
   mutate(bump_Jan = if_else(abnd_Jan > abnd_July,                   # create bumps 2 to the left or right of points
-                            abnd_Jan + 2,
-                            abnd_Jan - 2),
+                            abnd_Jan + 3,
+                            abnd_Jan - 3),
          bump_July = if_else(abnd_Jan > abnd_July,                  # create bumps 2 to the right or left of points
-                             abnd_July - 2,
-                             abnd_July + 2)) |>
+                             abnd_July - 3,
+                             abnd_July + 3)) |>
   pivot_longer(cols = c(abnd_Jan, abnd_July, bump_Jan, bump_July),
                names_to = c(".value", "month"),                     # collapse into abnd or bump columns
                names_sep = "_") |>
   ggplot(aes(x = abnd, y = pair, color = month)) +
   facet_wrap(~ treatment, nrow = 1, strip.position = "bottom") +    # split plots by treatment
-  geom_line(color = "black", linewidth = 1.75, alpha = 0.35) +         # add semi-trans black line of specific size
-  geom_point(size = 2.5) +                                          # add point of particular size
+  geom_line(color = "black", linewidth = 3, alpha = 0.25) +         # add semi-trans black line of specific size
+  geom_point(size = 4) +                                          # add point of particular size
   geom_text(aes(label = round(abnd, digits = 0), x = bump)) +       # label point w/ abundance value at bump position
   scale_color_manual(breaks = c("Jan", "July"),                     # color by month
                      values = ctheme2,                              # point fill colors
@@ -183,29 +190,31 @@ frq_tbl |> summarise(.by = c(treatment, month, pair),               # group data
        subtitle = NULL,                                             # plot subtitle
        x = paste0(ytit),                                            # x-axis label
        y = paste0(xtit),                                            # y-axis label
-       caption = "<i>Each 'dumbell' represents one site, of which contained 9 samples.</i>",
-       tag = "Figure X \n",                                         # tag label
+       caption = NULL,
+       tag = NULL,                                         # tag label
        color = NULL) +                                              # legend title
   theme_classic() +                                                 # remove gray blocks from background
-  theme(plot.title.position = "plot",                               # align title to plot
+  theme(text = element_text(size = 18),
+        plot.title.position = "plot",                               # align title to plot
         plot.title = element_text(hjust = 0.5,                      # title justification
-                                  face = "bold",                    # title font face
-                                  family = NULL),                   # title font
+                                  size = rel(1.2),                   # title font size
+                                  face = "bold"),                    # title font face
         axis.title.x = element_text(face = "bold",                  # x-axis font face
-                                    size = 14),                     # x-axis font size
+                                    size = rel(1)),                  # x-axis font size
         axis.title.y = element_text(face = "bold",                  # y-axis font face
-                                    size = 14),                     # y-axis font size
+                                    size = rel(1)),                  # y-axis font size
         plot.caption.position = "plot",                             # align caption to plot
-        plot.caption = element_markdown(hjust = 0,                  # caption justification (markdown for HTML)
-                                        color = ccap),              # caption font color
+        plot.caption = element_text(hjust = 0,                  # caption justification (markdown for HTML)
+                                    size = rel(0.6),             # caption font size
+                                    color = ccap),              # caption font color
         legend.title = element_text(face = "bold",                  # legend face
-                                    size = 12),                     # legend font size
+                                    size = rel(1)),                  # legend font size
         strip.background = element_rect(fill = "white",             # strip background color
                                         colour = "black"),          # strip border color
         strip.text = element_text(face = "bold",                    # strip font face
                                   colour = "black",                 # strip font color
-                                  size = rel(1.2)))                 # strip font size
-ggsave("figures/avg_abnd_dmbllplt.png")
+                                  size = rel(1)))                 # strip font size
+ggsave(paste0("figures/ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Visualize mean abundance per treatment pair over across timepoints, slope plot
 #and https://www.youtube.com/watch?v=z7Ci9NN3LUc&list=PLmNrK_nkqBpKY3SZiivlIGvcLX-KHmfR8&index=226
