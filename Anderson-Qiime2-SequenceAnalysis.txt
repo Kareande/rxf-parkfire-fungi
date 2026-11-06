@@ -349,5 +349,165 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_uncl
 #------------- ASSIGN TAXONOMY - TRAIN CLASSIFIER--------------#
 #--------------------------------------------------------------#
 
+## Import 
+qiime tools import \
+--type 'FeatureData[Sequence]' \
+--input-path [path to reference sequence Fasta file] \
+--output-path [desired path to QIIME2 artifact]
+
+## Import 
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path [path to taxonomic affiliation txt file] \
+--output-path [desired path to QIIME2 artifact]
+
+## NOTE:
+# We recommend training UNITE
+#classifiers on the full reference sequences. Furthermore, we recommend the “developer”
+#sequences (located within the QIIME-compatible release download) because the standard
+#versions of the sequences have already been trimmed to the ITS region (excluding portions of
+#flanking rRNA genes that may be present in amplicons generated with standard ITS primers).”
+
+## Train classifier
+feature-classifier fit-classifier-naive-bayes \
+
+## Test clssifier on mock coomunity
 
 
+## Apply classifier
+feature-classifier classify-sklearn \
+
+
+## Visualize results
+taxa barplot \
+
+
+## Filter out mock community
+taxa filter-table \
+
+
+## Filter out rare taxa
+feature-table filter-samples \
+
+feature-table filter-features \
+
+
+#-----------------------------------------------------#
+#------------------- RAREFY DATA ---------------------#
+#-----------------------------------------------------#
+
+## Graph diversity as a function of sampling depth, full study
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst.qzv
+
+## Graph diversity as a function of sampling depth, 6mo
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl_6mo.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst_6mo.qzv
+
+## Graph diversity as a function of sampling depth, 12mo
+qiime diversity alpha-rarefaction \
+  --i-table table_pdecon_unclst_noctl_12mo.qza \
+  --p-max-depth 7000 \
+  --p-steps 10 \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-visualization alpha_rrfctn_pdecon_unclst_12mo.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_6mo.qzv alpha_rrfctn_pdecon_unclst_6mo.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_12mo.qzv alpha_rrfctn_pdecon_unclst_12mo.qzv
+
+## NOTE:
+# Shannon diversity levels out at quickly, oberved feats levels out at 6222.
+# Sampling depth will be 6222.
+
+
+## Calculate diversity metrics on rareified samples
+qiime diversity core-metrics \
+  --i-table table_pdecon_unclst_noctl.qza \
+  --p-sampling-depth 6222 \
+  --p-no-with-replacement \
+  --p-random-seed 8192026 \
+  --m-metadata-file metadata_noctl.tsv \
+  --output-dir core-metrics-results
+
+#----------------------------------------------------------#
+#--------- EXPORT ASV FREQ TABLE W/ TAXONOMY --------------#
+#----------------------------------------------------------#
+
+## Export ASV frequency table (feature-table.biom)
+qiime tools export \
+  --input-path table_pdecon_unclst_noctl.qza \
+  --output-path export-R/freq-table
+
+## Replace header of taxonomy-trait table so that the tables match
+nano export-R/traits/metadata.tsv            # "feature-id  taxon confidence" -> "#OTU ID  taxonomy  confidence"
+
+## Add metadata to the ASV table
+biom add-metadata \
+ -i export-R/freq-table/feature-table.biom \
+ -o export-R/freq-table/feat_freq_taxonomy.biom \
+ --observation-metadata-fp export-R/traits/metadata.tsv \
+ --sc-separated taxonomy
+
+## Convert biom to tsv
+biom convert \
+  -i export-R/freq-table/feat_freq_taxonomy.biom \
+  -o export-R/freq-table/feat_freq_taxonomy.tsv \
+  --to-tsv \
+  --process-obs-metadata taxonomy \
+  --header-key taxonomy
+
+## Download biom file to read in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq_taxonomy.tsv ./export-R/freq-table/feat_freq_taxonomy.tsv
+
+## NOTE:
+# the conversion from biome ability in R is very poor considering you can only choose ONE header
+# from the input metadata file to be included in the tsv. It's getter to merge datasets in R.
+
+
+#-------------------------------------------------------#
+#---------------- EXPORT FREQ TABLES -------------------#
+#-------------------------------------------------------#
+
+## Export Rarefied table (feat-ID, Counts)
+qiime tools export \
+  --input-path core-metrics-results/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_full.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-6mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_6mo.tsv \
+  --to-tsv
+qiime tools export \
+  --input-path core-metrics-results-12mo/rarefied_table.qza \
+  --output-path export-R/freq-table
+biom convert \
+  -i export-R/freq-table/feature-table.biom \
+  -o export-R/freq-table/rarified_feat_freq_12mo.tsv \
+  --to-tsv
+
+## Export freq tables
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq.tsv export-R/freq-table/feat_freq.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_full.tsv export-R/freq-table/rarified_feat_freq_full.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_6mo.tsv export-R/freq-table/rarified_feat_freq_6mo.tsv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_12mo.tsv export-R/freq-table/rarified_feat_freq_12mo.tsv
+
+
+
+
+# https://drive.google.com/drive/u/2/folders/1mRpCmbO4PU8diPWHcYWyhKYvy5E7Gkr_
