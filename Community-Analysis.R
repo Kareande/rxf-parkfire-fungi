@@ -16,8 +16,9 @@ library(nortest)     # anderson-darling test
 library(car)         # leverne test
 
 ## Set working directory
-wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
-setwd(wd)
+# wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
+# wd <- "C://Users//mulle//VS_Code//rxf-parkfire-fungi"
+# setwd(wd)
 
 
 #----------------------------------------------------------------------------------------------------------------------#

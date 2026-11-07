@@ -10,20 +10,21 @@
 #install.packages("RColorBrewer")
 #install.packages("nortest")
 #install.packages("vegan")
+#install.packages("rstatix")
 library(tidyverse)      # data manipulation + ggplot2
 library(RColorBrewer)   # colour palettes
 library(nortest)        # anderson-darling test
 library(car)            # leverne test
 library(vegan)          # microbio diversity
-library(rstatix)        # stats package, anova_test
+library(rstatix)        # stats package, anova_test, outliers
 library(ggpubr)         # idk what this was for tbh
 library(ggtext)         # element markdown to cinlude HTML
 library(showtext)       # fonts
 library(ggrepel)        # label text overlap
 
 ## Set working directory
-wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
-#wd <- "C://Users//mulle//VS_Code//rxf-parkfire-fungi"
+# wd <- "C://Users//Kat//VS_Code//rxf-parkfire-fungi"
+# wd <- "C://Users//mulle//VS_Code//rxf-parkfire-fungi"
 setwd(wd)
 
 ## Git repo
@@ -72,15 +73,9 @@ frq_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.name
          pair = factor(pair),
          site = factor(site, levels = c("2", "1", "4", "3", "5", "6",                      # RxF before NoRxF site
                                         "7", "8", "10", "9", "12", "11"))) |>
-  select(asv, site, subsite, treatment, month, pair, tmntpair, abundance)                  # re-order desired columns
+  select(asv, site, subsite, treatment, month, pair, tmntpair, abundance) |>               # re-order desired columns
+  filter(frq_tbl, abundance > 0)
 frq_tbl
-
-## Histogram
-ggplot(frq_tbl, aes(x = abundance)) +
-  geom_histogram(binwidth = 20)  # yikes
-
-## Remove any ASVs with zero counts
-frq_tbl <- filter(frq_tbl, abundance > 0)
 
 ## Histogram
 ggplot(frq_tbl, aes(x = abundance)) +
@@ -336,96 +331,6 @@ ggsave("figures/avg_abnd_barplt.png")
 #H0: The AVS counts do not differ across treatments
 #H1: The AVS counts are different for soil treated and not treated with RxF
 
-## Number of universal ASV
-freq_tbl_mnth <- frq_tbl |>
-  mutate(site = paste(site, treatment, pair, sep = "_")) |>
-  summarise(.by = c(asv, site, month),  # group data
-            abundance = sum(abundance)) |>
-  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
-
-sum(apply(filter(freq_tbl_mnth, month == "Jan") != 0, 1, all)) #40 ASV at all sites, Jan
-sum(apply(filter(freq_tbl_mnth, month == "July") != 0, 1, all)) #22 ASV at all sites, July
-
-isTRUE(
-  nrow(filter(freq_tbl_mnth, month == "July"))
-  ==
-    length(unique(filter(freq_tbl_mnth, month == "July")$asv))
-)
-
-freq_tbl_sites <- frq_tbl |>
-  mutate(site = paste(site, treatment, pair, sep = "_")) |>
-  summarise(.by = c(asv, site),  # group data
-            abundance = sum(abundance)) |>
-  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
-
-sum(apply(freq_tbl_sites != 0, 1, all)) #61 ASV at all sites
-
-freq_tbl_rxf <- frq_tbl |>
-  filter(treatment == "RxF") |>
-  mutate(site = paste(site, treatment, pair, sep = "_")) |>
-  summarise(.by = c(asv, site, treatment),  # group data
-            abundance = sum(abundance)) |>
-  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
-
-sum(apply(filter(freq_tbl_rxf, treatment == "RxF") != 0, 1, all)) #96 ASV at all RxF sites
-
-isTRUE(
-  nrow(filter(freq_tbl_rxf, treatment == "RxF"))
-  ==
-    length(unique(filter(freq_tbl_rxf, treatment == "RxF")$asv))
-)
-
-freq_tbl_norxf <- frq_tbl |>
-  filter(treatment == "NoRxF") |>
-  mutate(site = paste(site, treatment, pair, sep = "_")) |>
-  summarise(.by = c(asv, site, treatment),  # group data
-            abundance = sum(abundance)) |>
-  pivot_wider(names_from = site, values_from = abundance, values_fill = 0)
-
-sum(apply(filter(freq_tbl_norxf, treatment == "NoRxF") != 0, 1, all)) #72 ASV at all NoRxF sites
-
-isTRUE(
-  nrow(filter(freq_tbl_norxf, treatment == "NoRxF"))
-  ==
-    length(unique(filter(freq_tbl_norxf, treatment == "NoRxF")$asv))
-)
-
-## Number of unique ASV
-freq_tbl_tmnt <- frq_tbl |>
-  summarise(.by = c(asv, treatment),  # group data
-            abundance = sum(abundance)) |>
-  pivot_wider(names_from = treatment, values_from = abundance, values_fill = 0)
-
-sum(apply(freq_tbl_tmnt != 0, 1, all)) #852 ASV present in both treatments
-nrow(filter(freq_tbl_tmnt, RxF != 0 & NoRxF == 0)) #1020 ASV only exist in RxF
-nrow(filter(freq_tbl_tmnt, RxF == 0 & NoRxF != 0)) #1040 ASV only exist in NoRxF
-
-## ASV across paired sites
-for (pairs in unique(frq_tbl$pair)){
-
-  filt_freq <- frq_tbl |>
-    filter(pair == pairs) |>
-    mutate(pair = paste(treatment, pair, sep = "_")) |>
-    summarise(.by = c(asv, pair),
-              abundance = sum(abundance)) |>
-    pivot_wider(names_from = pair, values_from = abundance, values_fill = 0)
-
-  tot <- length(unique(filt_freq$asv))
-  p_name <- names(filt_freq)
-  print(paste("--- Now comparing pairs", p_name[2], "and", p_name[3],
-              "which have", tot, "unique ASV ---"))
-
-  p_all <- sum(apply(filt_freq != 0, 1, all))
-  print(paste(p_all, "ASV present in both paired sites - ", (p_all/tot)*100, "%"))
-
-  p_p1 <- nrow(filter(filt_freq, filt_freq[2] != 0 & filt_freq[3] == 0))
-  p_p2 <- nrow(filter(filt_freq, filt_freq[2] == 0 & filt_freq[3] != 0))
-  print(paste(p_p1, "ASV present in only", p_name[2], (p_p1/tot)*100, "%"))
-  print(paste(p_p2, "ASV present in only", p_name[3], (p_p2/tot)*100, "%"))
-
-}
-rm(filt_freq)
-
 ## Count unique ASVs per subsite/sample (richness)
 rich_tbl <- frq_tbl |>                              # use freq table
   summarise(.by = c(site, subsite, treatment,       # group data
@@ -433,107 +338,67 @@ rich_tbl <- frq_tbl |>                              # use freq table
             richness = length(unique(asv)))        # number of unique ASV per subsite
 rich_tbl
 
-rich_tbl_6mo <- frq_tbl |>                          # use freq table
-  summarise(.by = c(site, subsite, treatment,       # group data
-                    pair, tmntpair, month),
-            richness = length(unique(asv))) |>     # number of unique ASV per subsite
-  filter(month == "Jan")
-rich_tbl_6mo
-
-rich_tbl_12mo <- frq_tbl |>                         # use freq table
-  summarise(.by = c(site, subsite, treatment,       # group data
-                    pair, tmntpair, month),
-            richness = length(unique(asv))) |>     # number of unique ASV per subsite
-  filter(month == "July")
-rich_tbl_12mo
-
 ## Check for outliers
-identify_outliers(rich_tbl, richness)
-rich_tbl <- filter(rich_tbl, subsite != "3E")  #had to remove 3E, 12R, 3D
-rich_tbl <- filter(rich_tbl, subsite != "12R") #had to remove 3E, 12R, 3D
-rich_tbl <- filter(rich_tbl, subsite != "3D")  #had to remove 3E, 12R, 3D
-
-identify_outliers(rich_tbl_6mo, richness)  #none
-
-identify_outliers(rich_tbl_12mo, richness) #3E
+identify_outliers(rich_tbl, richness) #3E
 
 ## Test normality (distribution assumption)
-shapiro.test(rich_tbl$richness)            #p = 0.5808, null accepted
+shapiro.test(rich_tbl$richness)            #p = 0.0007723, null rejected
 ks.test(rich_tbl$richness, "pnorm")        #p < 2.2e-16, null rejected
-ad.test(rich_tbl$richness)                 #p = 0.4196, null accepted
+ad.test(rich_tbl$richness)                 #p = 0.0937, null accepted
 plot(density(rich_tbl$richness))           # plot density, normalish
 ggplot(rich_tbl, aes(sample = richness)) + # plot Q-Q plot, almost linear
-  geom_qq() +
-  geom_qq_line()
-
-shapiro.test(rich_tbl_6mo$richness)            #p = 0.5808, null accepted
-ks.test(rich_tbl_6mo$richness, "pnorm")        #p < 2.2e-16, null rejected
-ad.test(rich_tbl_6mo$richness)                 #p = 0.4196, null accepted
-plot(density(rich_tbl_6mo$richness))           # plot density, normalish
-ggplot(rich_tbl_6mo, aes(sample = richness)) + # plot Q-Q plot, almost linear
-  geom_qq() +
-  geom_qq_line()
-
-shapiro.test(rich_tbl_12mo$richness)            #p = 0.5808, null accepted
-ks.test(rich_tbl_12mo$richness, "pnorm")        #p < 2.2e-16, null rejected
-ad.test(rich_tbl_12mo$richness)                 #p = 0.4196, null accepted
-plot(density(rich_tbl_12mo$richness))           # plot density, normalish
-ggplot(rich_tbl_12mo, aes(sample = richness)) + # plot Q-Q plot, almost linear
   geom_qq() +
   geom_qq_line()
 
 ## Test homoscedasticity (variance assumption)
 ggplot(rich_tbl, aes(site, richness, group = treatment, color = treatment)) +
   geom_jitter()
-leveneTest(richness ~ site, data = rich_tbl) #p = 0.7731, null accepted
+leveneTest(richness ~ site, data = rich_tbl) #p = 0.4941, null accepted
 plot(rich_tbl$richness)                      # plot variance, fine
 boxplot(rich_tbl$richness)                   # plot spread, almost symmetrical
 
 ## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
 #t.test: Is there is a difference between the mean differences in ASV counts for the treatments?
 #wilcox: Is there a difference between the summed ranks of the differences in ASV counts for the treatments?
-count_ptable <- rich_tbl |>                                      # use count table
+count_ptable_t <- rich_tbl |>                                      # use count table
   summarise(.by = c(treatment, pair),                            # group data by treatment and pair
             mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
   pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
-count_ptable
-t.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE)      #p = 0.8132, null accepted
-wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p = 0.6875, null accepted
-
-count_ptable <- rich_tbl_6mo |>                                      # use count table
-  summarise(.by = c(treatment, pair),                            # group data by treatment and pair
-            mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
-  pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
-count_ptable
-wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p =
-
-count_ptable <- rich_tbl_12mo |>                                      # use count table
-  summarise(.by = c(treatment, pair),                            # group data by treatment and pair
-            mean_rich = mean(richness)) |>                       # count number of unique ASV for each treatment*pair
-  pivot_wider(names_from = treatment, values_from = mean_rich)   # seperate columns for treatment counts
-count_ptable
-wilcox.test(count_ptable$NoRxF, count_ptable$RxF, paired = TRUE) #p =
+count_ptable_t
+t.test(count_ptable_t$NoRxF, count_ptable_t$RxF, paired = TRUE)      #p = 0.3569, null accepted
+wilcox.test(count_ptable_t$NoRxF, count_ptable_t$RxF, paired = TRUE) #p = 0.4375, null accepted
 
 ## PARAMETRIC Paired t-Test, NONPARAMETRIC Wilcoxon signed-rank test
 #t.test: Is there is a difference between the mean differences in ASV counts for the months?
 #wilcox: Is there a difference between the summed ranks of the differences in ASV counts for the months?
-count_ptable2 <- rich_tbl |>                               # use count table
+count_ptable_m <- rich_tbl |>                               # use count table
   summarise(.by = c(month, pair),                          # group data by month and pair
             mean_rich = mean(richness)) |>                 # count number of unique ASV for each month*pair
   pivot_wider(names_from = month, values_from = mean_rich) # seperate columns for month counts
-count_ptable2
-t.test(count_ptable2$Jan, count_ptable2$July, paired = TRUE)      #p = 0.5118, null accepted
+count_ptable_m
+t.test(count_ptable_m$Jan, count_ptable_m$July, paired = TRUE)      #p = 0.09355, null accepted
+wilcox.test(count_ptable_m$Jan, count_ptable_m$July, paired = TRUE) #p = 0.09375, null accepted
 
 ## PARAMETRIC ANOVA repeated measures, NONPARAMETRIC Friedman Test
-#no benefit in choosing t.test vs ANOVA
-#anova: Is there a difference between the mean ASV counts for the treatments?
+#anova: Is there a difference between the mean ASV counts for the treatments? (take the difference over paired tmnts)
 #friedman: Is there a difference between the treatment rank sums?
-count_gtable <- rich_tbl |>                    # use count table
-  summarise(.by = c(treatment, month, pair),   # group data by treatment and month
-            mean_rich = mean(richness))       # count number of unique ASV for each treatment*month
-print(count_gtable, n = 24)
-aov_res <- count_gtable |>
-  anova_test(mean_rich ~ treatment * month + Error(pair / (treatment * month)))
+count_dtable <- rich_tbl |>                    # use count table
+  summarize(.by = c(treatment, pair, month),
+            mu_rich = mean(richness)) |>                     # average richness across sites
+  pivot_wider(names_from = month, values_from = mu_rich) |>  # create richness column for both months
+  mutate(mu_rich_diff = July - Jan)                           # take difference of richness
+print(count_dtable, n = 12)
+
+count_dtable <- rich_tbl |>                    # use count table
+  summarize(.by = c(treatment, pair, month),
+            mu_rich = mean(richness)) |>                     # average richness across sites
+  pivot_wider(names_from = pair, values_from = mu_rich) |>  # create richness column for both months
+  mutate(mu_rich_diff = NoRxF - RxF) |>                           # take difference of richness
+  select(month, pair, everything())
+print(count_dtable, n = 12)
+
+aov_res <- count_dtable |>
+  anova_test(mu_rich ~ treatment * month + Error(pair / (treatment * month)))
 get_anova_table(aov_res)                       #p > 0.05, null accepted
 
 count_gtable2 <- rich_tbl |>                   # use count table
@@ -554,7 +419,7 @@ count_gtable2 |>
 
 count_gtable3 <- count_gtable |>                      # convert to matrix for Friedman Test
   pivot_wider(names_from = c(treatment, month),     # seperate columns for treatment*month counts
-              values_from = count_asv)
+              values_from = mean_rich)
 count_gmtrx <- as.matrix(count_gtable3[, 2:5])         # convert to matrix for Friedman Test
 count_gmtrx
 friedman.test(count_gmtrx)                          #p = 0.7055, null accepted
@@ -563,6 +428,7 @@ friedman.test(count_gmtrx)                          #p = 0.7055, null accepted
 # Data is normal enough to justify using parametric tests. Did both, but will only use parametric results.
 # There is no support for the hypothesis that ASV richness is different between treatments, timepoints, nor
 # treatments across timepoints.
+2 sample t.test for independence when ignoring month
 # 2-way indep ANOVA: continuous dep var, two factors (tmnt*month), repeat obs on subject (pair for month and tmnt)
 # one formula adds in the pair association, but the site diff is lost
 # other formula accounts for only re-measures of site, but paired association is lost
@@ -596,7 +462,7 @@ capt <- paste("ANOVA results: n = 24, Treatment (p = 0.272), Month (p = 0.118), 
               "Wilcoxon Signed-Rank Test results: n = 6, 6mo Treatment (p = 1), 12mo Treatment (p = 31)")
 plt_type <- "barplt"
 rich_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
-                      avg_rich = mean(richness),
+                      mu_rich = mean(richness),
                       se = sd(richness) / sqrt(length(richness))) |>
   mutate(month = factor(month,
                         levels = c("Jan", "July"),
@@ -607,9 +473,9 @@ rich_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
                                   "PairX", "PairY", "PairZ"),
                        labels = c("T", "V", "W",
                                   "X", "Y", "Z"))) |>
-  ggplot(aes(x = pair, y = avg_rich, fill = treatment)) +
+  ggplot(aes(x = pair, y = mu_rich, fill = treatment)) +
   geom_col(position = "dodge", alpha = 0.8) +
-  geom_errorbar(aes(x = pair, ymin = avg_rich - se, ymax = avg_rich + se),
+  geom_errorbar(aes(x = pair, ymin = mu_rich - se, ymax = mu_rich + se),
                 colour = "black",
                 alpha = 0.6,
                 size = 0.6,
@@ -986,6 +852,11 @@ adonis2(bray ~ treatment*month, data = meta_nmds, permutations = blc)
 # or
 ord <- dbrda(bray ~ treatment*month + Condition(site), data = meta_nmds, method = "bray") 
 anova(ord, permutations = blc )`
+
+## Cannot compare at the subsite reolution b/c cannot match the 6 and 12mo samples because some are missing, but
+# also the labeling mishap. So, can only compare at the site level by taking the mean for each site.
+
+
 
 #----------------------------------------------------------------------------------------------------------------------#
 #----------------------------------------------- BETA DIVERSITY; BIPLOT -----------------------------------------------#
