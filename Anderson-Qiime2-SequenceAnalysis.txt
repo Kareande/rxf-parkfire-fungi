@@ -332,7 +332,7 @@ qiime feature-table tabulate-seqs \
 
 ## Create barplot
 qiime taxa barplot \
-  --i-table table_otus97_sgl.qza  \
+  --i-table table_otus97_sgl.qza  \ # DOES NOT EXIST
   --i-taxonomy taxa_otus97_trained.qza \
   --m-metadata-file metadata.tsv \
   --o-visualization barplot_taxa_otus97_trained.qzv
@@ -344,64 +344,6 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97_tra
 ## NOTE:
 # The classifier detected ?? mock OTUs at the ??? level. The original mock sequences ??? in my dataset. Only one of my pos ctl made it
 # through quality filtering, but some mock OTU were detected in up to ??? other samples. I copied/pasted from the .qza file all mock OTUs.
-
-
-#----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------- TRAIN CLASSIFIER ON UNTRIMMED SEQS -----------------------------------------#
-#----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-training-dev.yaml
-
-## Upload latest UNITE data and associated taxonomy file, dev version that is untrimmed (w/ mock community data added)
-kubectl cp sh_qiime_release_s_19.02.2025\developer\sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta
-kubectl cp sh_qiime_release_s_19.02.2025\developer\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt
-
-## Import latest UNITE data
-qiime tools import \
-  --type 'FeatureData[Sequence]' \
-  --input-path sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta \
-  --output-path unite_dev.qza
-
-## Import associated UNITE taxonomy file
-qiime tools import \
---type 'FeatureData[Taxonomy]' \
---input-format HeaderlessTSVTaxonomyFormat \
---input-path sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt \
---output-path unite_taxonomy_dev.qza
-
-## Train classifier
-qiime feature-classifier fit-classifier-naive-bayes \
-  --i-reference-reads unite_dev.qza \
-  --i-reference-taxonomy unite_taxonomy_dev.qza \
-  --o-classifier classifier_dev.qza
-
-## NOTE:
-# your reference database should contain sequences obtained with the same primers you used
-# to generate the amplicons in your experiment.
-
-
-#----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------- ASSIGN TAXONOMY TO UNTRIMMED SEQS ------------------------------------------#
-#----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-trained-dev.yaml
-
-## Assign taxonomy to ASVs
-qiime feature-classifier classify-sklearn \
-  --i-classifier classifier_dev.qza \
-  --i-reads seqs_demux.qza \
-  --o-classification taxa_demux_trained.qza
-
-## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
-qiime feature-table tabulate-seqs \
-  --i-data seqs_demux.qza \
-  --i-taxonomy unite_taxonomy_dev.qza \
-  --m-metadata-file demux_summary_export/per-sample-fastq-counts.tsv \
-  --o-visualization taxa_demux_trained.qzv
-
-## Download visualizations (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_demux_trained.qzv taxa_demux_trained.qzv
-
-## NOTE:
-# 
 
 
 #----------------------------------------------------------------------------------------------------------------------#
