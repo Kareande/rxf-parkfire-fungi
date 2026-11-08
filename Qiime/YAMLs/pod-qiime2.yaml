@@ -1,0 +1,25 @@
+# pod-qiime2.yaml
+# This is a Kubernetes Pod configuration file for running QIIME2
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qiime2-pod          # Name of the pod you'll see with command 'kubectl get pods'
+spec:
+  containers:
+  - name: biopod            # Name of container, not important
+    image: quay.io/qiime2/qiime2:2026.10       # Image name pulled from DockerHub
+    command: ["sh", "-c", "sleep infinity"]   # commands to open shell and keep container running indefinitely
+    resources:
+      limits:
+        memory: 16Gi             # Amount of storage needed to do the work (Mi is MB, Gi is GB)
+        cpu: 2                   # Amount of processing power needed (500m is 0.5 CPU, or 1 thread)
+      requests:
+        memory: 16Gi             # NRP policy is that limits and requests for memory/cpu are the same
+        cpu: 2
+    volumeMounts:
+    - mountPath: /biovol         # Folder that your PersistentVolumeClaim will be called within your pod
+      name: biovol
+  volumes:
+    - name: biovol
+      persistentVolumeClaim:
+        claimName: rxfungi-vol   # Name from 'pvc-rxfungi-vol.yaml'

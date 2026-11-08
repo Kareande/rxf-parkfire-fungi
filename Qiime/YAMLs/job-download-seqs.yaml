@@ -1,0 +1,33 @@
+# job-download-seqs.yaml
+# Downloads sequence data from the UC Davis BioShare repository using wget
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wget-job    # Name of the job and base name of pods you'll see with command 'kubectl get'
+  namespace: grad-erth-wmis-kranderson4   # Your namespace (https://nrp.ai/namespaces/)
+spec:
+  backoffLimit: 4         # Amount of times container will retry when failed (make at least 1)
+  template:
+    spec:
+      containers:
+      - name: wget-job-pod    # Name of container, not important
+        image: quay.io/qiime2/qiime2:2026.7
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Download beginning at $(date)...**" && <paste-entire-wget-command-here> && echo "**Download completed at $(date).**"'
+        resources:
+          limits:
+            memory: 128Gi
+            cpu: 8
+          requests:
+            memory: 128Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol       # Folder used to access your PersistentVolumeClaim
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol    # Name from pvc-rxfungi-vol.yaml
+      restartPolicy: Never          # Won't restart the container once completed

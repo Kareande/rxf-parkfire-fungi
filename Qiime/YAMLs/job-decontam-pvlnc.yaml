@@ -1,0 +1,34 @@
+# job-decontam-pvlnc.yaml
+# This job uses decontam-identify to remove sequences using information about controls and sample concentration
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: decontam-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 4
+#  parallelism: 1
+  template:
+    spec:
+      containers:
+      - name: decontam-job-pod
+        image: quay.io/qiime2/qiime2:2026.7   # Verify this is the correct version for the classifier job
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Identifying contaminants on $(date)...**" && qiime quality-control decontam-identify --i-table table_asvs_sgl_filt.qza --m-metadata-file metadata.tsv --p-method prevalence --p-prev-control-column Sample_or_Control --p-prev-control-indicator control --o-decontam-scores decontam_pvlnc_scores_asvs_sgl.qza && echo "**Contaminants identified on $(date). Visualizing decontam scores...**" && qiime quality-control decontam-score-viz --i-decontam-scores decontam_pvlnc_scores_asvs_sgl.qza --i-table table_asvs_sgl_filt.qza --i-rep-seqs seqs_asvs_sgl.qza --p-threshold 0.1 --p-no-weighted --p-bin-size 0.05 --o-visualization decontam_pvlnc_scores_asvs_sgl.qzv && echo "**Visualizations done on $(date). Now filtering out contaminants.**" && qiime feature-table filter-features --i-table table_asvs_sgl.qza --m-metadata-file decontam_pvlnc_scores_asvs_sgl.qza --p-where "[p]>0.1 OR [p] IS NULL" --o-filtered-table table_asvs_sgl_pdecont.qza && qiime feature-table filter-seqs --i-data seqs_asvs_sgl.qza --i-table table_asvs_sgl_pdecont.qza --o-filtered-data seqs_asvs_sgl_pdecont.qza && echo "**Filtering complete on $(date). Now summarizing and producing final visualizations...**" && qiime feature-table summarize --i-table table_asvs_sgl_pdecont.qza --m-metadata-file metadata.tsv --o-feature-frequencies feat_freq_asvs_sgl_pdecont.qza --o-sample-frequencies smpl_freq_asvs_sgl_pdecont.qza --o-summary table_asvs_sgl_pdecont.qzv && qiime feature-table tabulate-seqs --i-data seqs_asvs_sgl_pdecont.qza --m-metadata-file feat_freq_asvs_sgl_pdecont.qza --o-visualization seqs_asvs_sgl_pdecont.qzv && echo "**Job complete on $(date).**"'
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: 8
+          requests:
+            memory: 64Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

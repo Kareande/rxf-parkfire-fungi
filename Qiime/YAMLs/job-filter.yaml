@@ -1,0 +1,35 @@
+# job-filter.yaml
+# This job filters low read sequences from the data
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itsxpress-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      containers:
+      - name: job-pod
+        image: quay.io/qiime2/qiime2:2026.7  # Verify that this is the correct qiime2 version
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Exporting counts file on $(date)...**" && qiime tools export --input-path seqs_demux.qzv --output-path demux_summary_export && echo "**Filtering low reads on $(date)...**" && qiime demux filter-samples --i-demux seqs_demux.qza --m-metadata-file demux_summary_export/per-sample-fastq-counts.tsv --p-where "CAST([forward sequence count] AS INT) > 500" --p-remove-empty --o-filtered-demux seqs_demux_filt.qza --verbose && echo "**Filtering complete on $(date). Visualizing seqs...**" && qiime demux summarize --i-data seqs_demux_filt.qza --o-visualization seqs_demux_filt.qzv && echo "**Job completed at $(date).**"'
+        resources:
+          limits:
+            memory: 250Gi
+            cpu: 8
+            ephemeral-storage: 250Gi
+          requests:
+            memory: 250Gi
+            cpu: 8
+            ephemeral-storage: 250Gi
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

@@ -1,0 +1,35 @@
+# job-itsxpress.yaml
+# This job runs the ITSxpress plugin to trim the ITS region from the imported sequence data
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: itsxpress-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      containers:
+      - name: job-pod
+        image: quay.io/qiime2/qiime2:2026.7  # Verify that this is the correct qiime2 version
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Initializing environment on $(date)...**" && conda install -c bioconda -c conda-forge ITSxpress --verbose && qiime dev refresh-cache && echo "**Processing beginning on $(date)...**" && qiime itsxpress trim-pair-output-unmerged --verbose --i-per-sample-sequences seqs_demux_filt.qza --p-region ITS1 --p-threads 0 --p-cluster-id 1 --o-trimmed seqs_its_extracted.qza && qiime demux summarize --i-data seqs_its_extracted.qza --o-visualization seqs_its_extracted.qzv && echo "**Summary completed at $(date).**"'
+        resources:
+          limits:
+            memory: 250Gi
+            cpu: 8
+            ephemeral-storage: 250Gi
+          requests:
+            memory: 250Gi
+            cpu: 8
+            ephemeral-storage: 250Gi
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

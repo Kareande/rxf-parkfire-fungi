@@ -1,0 +1,33 @@
+# job-import.yaml
+# This job imports the sequence data into QIIME2 and summarizes it into a visualization
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: import-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      containers:
+      - name: import-job-pod
+        image: quay.io/qiime2/qiime2:2026.7  # Verify that this is the correct qiime2 version (https://library.qiime2.org/quickstart/qiime2) for ITSxpress (https://github.com/usda-ars-gbru/itsxpress)
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Import starting on $(date)...**" && qiime tools import --type "SampleData[PairedEndSequencesWithQuality]" --input-path manifest --output-path seqs_demux.qza --input-format PairedEndFastqManifestPhred33V2 && echo "**Import complete on $(date). Now summarizing into seqs_demux_v24-10.qzv...**" && qiime demux summarize --i-data seqs_demux.qza --o-visualization seqs_demux.qzv && echo "**Summarizing complete on $(date).**"'
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: 8
+          requests:
+            memory: 64Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never
