@@ -3,9 +3,9 @@
 # Paired with .YAML files for use with National Research Platform (NRP)
 # Updated 2026: QIIME2 2026.7, conda 26.5.3, WSL 2.7.8.0
 
-#-------------------------------------------------------------#
-#-------------------- PREPPING WORKSPACE ---------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- PREPPING WORKSPACE -------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Create manifest file (save as tab deliminated)
 sample-id     forward-absolute-filepath               reverse-absolute-filepath
@@ -37,9 +37,9 @@ exit
 kubectl delete pod qiime2-pod
 
 
-#--------------------------------------------------------------#
-#----------------- DOWNLOADING SEQUENCE DATA ------------------#
-#--------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------- DOWNLOADING SEQUENCE DATA ----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # kubectl create -f job-download-seqs.yaml
 
 ## Download data from UC Davis
@@ -48,9 +48,9 @@ kubectl delete pod qiime2-pod
 wget -r --level=10 -nH -nc --cut-dirs=3 --no-parent --reject "wget_index.html" --no-check-certificate --header "Cookie: sessionid=tywce9xpnqm6zpwo2t6ii1bm1r3n3xmb;" https://bioshare.bioinformatics.ucdavis.edu/bioshare/wget/kvdt1xcr8d6vcdr/wget_index.html
 
 
-#-------------------------------------------------------------#
-#----------------- IMPORTING DATA TO QMIIE2 ------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------- IMPORTING DATA TO QMIIE2 ----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # kubectl create -f job-import.yaml
 
 ## Import data into quiime2
@@ -74,9 +74,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv .\seqs_d
 # still going to do both paired and single to compare.
 
 
-#-----------------------------------------------------------#
-#-------------- FILTERING BY READS -------------------------#
-#-----------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- FILTERING BY READS -------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # job-filter.yaml
 
 ## Export to a TSV, this contains the counts
@@ -106,9 +106,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_filt.qzv seqs_filt
 # I could have chosen to simply trim the primers using cutadapt. I compared the two, and
 # ITSxpress results were much better (higher quality seqs, more features).
 
-#-------------------------------------------------------------#
-#------------------- EXTRACT ITS REGION-----------------------#
-#-------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------- EXTRACT ITS REGION -------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # kubectl create -f job-itsxpress.yaml
 
 ## Install itsxpress
@@ -136,9 +136,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv 
 # interactive quality plot.
 
 
-#--------------------------------------------------------------#
-#----------------- QUALITY FILTER & DENOISE -------------------#
-#--------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------- QUALITY FILTER & DENOISE ----------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # kubectl create -f job-dada2-single.yaml
 
 ## Use dada2 to denoise, dereplicate, and filter chimeras
@@ -178,18 +178,29 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_dada2_single.qzv a
 # had a mean of 6308.
 
 
-#------------------------------------------------#
-#--------------- DECONTAMINATE ------------------#
-#------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------- DECONTAMINATE ----------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 # https://jordenrabasco.github.io/Q2_Decontam_Tutorial.html
 # job-decontam.yaml
 
-### WILL NEED TO REDO THIS STEP ONCE I FIGURE OUT HOW TO
-DEAL WITH THE MOCK COMMUNITY
+## Upload mock community for Filtering
+kubectl cp data\mock_sequences.fasta qiime2-pod:\biovol\mock_sequences.fasta
+
+## Remove mock community from pos ctls
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path mock_sequences.fasta \
+  --output-path mock_seqs.qza
+qiime feature-table filter-features \
+  --i-table table_dada2_single.qza \
+  --m-metadata-file mock_seqs.qza \
+  --p-exclude_ids \
+  --o-filtered-table table_dada2_single_filt.qza
 
 ## Identify contaminant seqs (prevalence method)
 qiime quality-control decontam-identify \
-  --i-table table_dada2_single.qza \
+  --i-table table_dada2_single_filt.qza \
   --m-metadata-file metadata.tsv \
   --p-method prevalence \
   --p-prev-control-column Sample_or_Control \
@@ -247,9 +258,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecont_sgl.qzv as
 # is of course higher in the clustered data where ASVs were collapsed together (~7k and ~4.5k).
 
 
-#-------------------------------------------------#
-#--------------- FILTER OUT CTLS -----------------#
-#-------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------- FILTER OUT CTLS ---------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
 ## Filter out ctls from table and seqs
 qiime feature-table filter-samples \
@@ -279,186 +290,112 @@ qiime feature-table tabulate-seqs \
 #kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecon_unclst_noctl.qzv asvs_pdecon_unclst_noctl.qzv
 
 
-#--------------------------------------------------------------#
-#-------- ASSIGN TAXONOMY - PRETRAINED CLASSIFIER -------------#
-#--------------------------------------------------------------#
-# kubectl create -f job-classifier-UNITE-single.yaml
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------- ASSIGN TAXONOMY - TRAIN CLASSIFIER -----------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#job-classifier-UNITE-training.yaml
 
-## Upload classifier (https://github.com/colinbrislawn/unite-train/releases) for use w/ Qiime2 2026.4
-#kubectl cp ./unite_ver2025-02-19_99_fungi-Q2-2026.4.qza qiime2-pod:\biovol\classifier_UNITE.qza
+## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
+kubectl cp data\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta
+kubectl cp data\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt
 
-## Assign taxonomy using pre-trained UNITE classifier
+## Import latest UNITE data
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta \
+  --output-path unite.qza
+
+## Import associated UNITE taxonomy file
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt \
+--output-path unite_taxonomy.qza
+
+## Train classifier
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads unite.qza \
+  --i-reference-taxonomy unite_taxonomy.qza \
+  --o-classifier classifier.qza
+
+## Assign taxonomy to ASVs
 qiime feature-classifier classify-sklearn \
-  --i-classifier classifier_UNITE.qza \
+  --i-classifier classifier.qza \
   --i-reads asvs_pdecon_unclst_noctl.qza \
-  --o-classification asvs_taxaUNITE_unclst_single.qza
+  --o-classification asvs_taxaUNITE_unclst_trained.qza
 
 ## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
 qiime feature-table tabulate-seqs \
   --i-data asvs_pdecon_unclst_noctl.qza \
-  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
-  --o-visualization asvs_taxaUNITE_unclst_single.qzv
+  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
+  --o-visualization asvs_taxaUNITE_unclst_trained.qzv
 
 ## Create barplot
 qiime taxa barplot \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
+  --i-table table_pdecon_unclst_noctl.qza  \
+  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
   --m-metadata-file metadata_noctl.tsv \
-  --o-visualization barplots_taxaUNITE_unclst_sgl.qzv
+  --o-visualization barplots_taxaUNITE_unclst_trained.qzv
 
 ## Download visualizations (https://view.qiime2.org/)
-#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_taxaUNITE_unclst_single.qzv asvs_taxaUNITE_unclst_single.qzv
-#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_unclst_single.qzv barplots_taxaUNITE_unclst_single.qzv
-
-## Seperate out 6 and 12mo datasets
-qiime feature-table filter-samples \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --p-where '[Collected]!="7/22/25"' \
-  --o-filtered-table table_pdecon_unclst_noctl_6mo.qza
-qiime feature-table filter-samples \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --p-where '[Collected]="7/22/25"' \
-  --o-filtered-table table_pdecon_unclst_noctl_12mo.qza
-
-## Create barplot for 6 and 12mo post-fire
-qiime taxa barplot \
-  --i-table table_pdecon_unclst_noctl_6mo.qza \
-  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization barplots_taxaUNITE_unclst_sgl_6mo.qzv
-qiime taxa barplot \
-  --i-table table_pdecon_unclst_noctl_12mo.qza \
-  --i-taxonomy asvs_taxaUNITE_unclst_single.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization barplots_taxaUNITE_unclst_sgl_12mo.qzv
-
-## Download visualizations (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_taxaUNITE_sgl_6mo.qzv asvs_taxaUNITE_sgl_6mo.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_unclst_sgl_6mo.qzv barplots_taxaUNITE_unclst_sgl_6mo.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_taxaUNITE_sgl_12mo.qzv asvs_taxaUNITE_sgl_12mo.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_unclst_sgl_12mo.qzv barplots_taxaUNITE_unclst_sgl_12mo.qzv
+#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_taxaUNITE_unclst_trained.qzv asvs_taxaUNITE_unclst_trained.qzv
+#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_unclst_trained.qzv barplots_taxaUNITE_unclst_trained.qzv
 
 ## NOTE:
-# The forward reads provided more taxon to be identified. I will work only with
-# single-end sequences.
+# your reference database should contain sequences obtained with the same primers you used
+# to generate the amplicons in your experiment.
 
 
-#--------------------------------------------------------------#
-#------------- ASSIGN TAXONOMY - TRAIN CLASSIFIER--------------#
-#--------------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------ ASSIGN FUNGAL TRAITS ------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
-## Import 
-qiime tools import \
---type 'FeatureData[Sequence]' \
---input-path [path to reference sequence Fasta file] \
---output-path [desired path to QIIME2 artifact]
+## Download q2-fungal-traits
+conda env create --name q2-fungal-traits-qiime2-2026.4 --file https://raw.githubusercontent.com/bokulich-lab/q2-fungal-traits/refs/heads/main/environment-files/q2-fungal-traits-qiime2-amplicon-2026.4.yml
+conda activate q2-fungal-traits-qiime2-2026.4
 
-## Import 
-qiime tools import \
---type 'FeatureData[Taxonomy]' \
---input-format HeaderlessTSVTaxonomyFormat \
---input-path [path to taxonomic affiliation txt file] \
---output-path [desired path to QIIME2 artifact]
+## Fungal trait annotation
+qiime fungal-traits annotate \
+  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
+  --o-fungal-traits fungal_traits.qza
+qiime metadata tabulate \
+  --m-input-file fungal_traits.qza \
+  --o-visualization fungal_traits.qzv
+conda deactivate
 
-## NOTE:
-# We recommend training UNITE
-#classifiers on the full reference sequences. Furthermore, we recommend the “developer”
-#sequences (located within the QIIME-compatible release download) because the standard
-#versions of the sequences have already been trimmed to the ITS region (excluding portions of
-#flanking rRNA genes that may be present in amplicons generated with standard ITS primers).”
-
-## Train classifier
-feature-classifier fit-classifier-naive-bayes \
-
-## Test clssifier on mock coomunity
+## Download trait-taxa visualization (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/fungal_traits.qzv fungal_traits.qzv
 
 
-## Apply classifier
-feature-classifier classify-sklearn \
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------- EXPORT DATA FROM QIIME ------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
 
-
-## Visualize results
-taxa barplot \
-
-
-## Filter out mock community
-taxa filter-table \
-
-
-## Filter out rare taxa
-feature-table filter-samples \
-
-feature-table filter-features \
-
-
-#-----------------------------------------------------#
-#------------------- RAREFY DATA ---------------------#
-#-----------------------------------------------------#
-
-## Graph diversity as a function of sampling depth, full study
-qiime diversity alpha-rarefaction \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --p-max-depth 7000 \
-  --p-steps 10 \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization alpha_rrfctn_pdecon_unclst.qzv
-
-## Graph diversity as a function of sampling depth, 6mo
-qiime diversity alpha-rarefaction \
-  --i-table table_pdecon_unclst_noctl_6mo.qza \
-  --p-max-depth 7000 \
-  --p-steps 10 \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization alpha_rrfctn_pdecon_unclst_6mo.qzv
-
-## Graph diversity as a function of sampling depth, 12mo
-qiime diversity alpha-rarefaction \
-  --i-table table_pdecon_unclst_noctl_12mo.qza \
-  --p-max-depth 7000 \
-  --p-steps 10 \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization alpha_rrfctn_pdecon_unclst_12mo.qzv
-
-## Download the visualization
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_6mo.qzv alpha_rrfctn_pdecon_unclst_6mo.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/alpha_rrfctn_pdecon_unclst_12mo.qzv alpha_rrfctn_pdecon_unclst_12mo.qzv
-
-## NOTE:
-# Shannon diversity levels out at quickly, oberved feats levels out at 6222.
-# Sampling depth will be 6222.
-
-
-## Calculate diversity metrics on rareified samples
-qiime diversity core-metrics \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --p-sampling-depth 6222 \
-  --p-no-with-replacement \
-  --p-random-seed 8192026 \
-  --m-metadata-file metadata_noctl.tsv \
-  --output-dir core-metrics-results
-
-#----------------------------------------------------------#
-#--------- EXPORT ASV FREQ TABLE W/ TAXONOMY --------------#
-#----------------------------------------------------------#
-
-## Export ASV frequency table (feature-table.biom)
+## Export freq table as .biom (feature-table.biom: #OTU ID, taxonomy, confidence)
 qiime tools export \
   --input-path table_pdecon_unclst_noctl.qza \
   --output-path export-R/freq-table
 
-## Replace header of taxonomy-trait table so that the tables match
-nano export-R/traits/metadata.tsv            # "feature-id  taxon confidence" -> "#OTU ID  taxonomy  confidence"
+## Export fungal traits to .tsv (metadata.tsv: feature-id, taxon, confidence, traits)
+qiime tools export \
+  --input-path fungal_traits.qza \
+  --output-path export-R/traits
 
-## Add metadata to the ASV table
+## Download fungal traits data to use in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/traits/metadata.tsv ./fungal_traits.tsv
+
+## Replace header of trait table so that the tables match
+# "feature-id  taxon confidence" -> "#OTU ID  taxonomy  confidence"
+nano export-R/traits/metadata.tsv
+
+## Add taxon metadata to the ASV freq table .biom (using trait metadata)
 biom add-metadata \
  -i export-R/freq-table/feature-table.biom \
- -o export-R/freq-table/feat_freq_taxonomy.biom \
  --observation-metadata-fp export-R/traits/metadata.tsv \
+ -o export-R/freq-table/feat_freq_taxonomy.biom \
  --sc-separated taxonomy
 
-## Convert biom to tsv
+## Convert freq-taxon .biom to .tsv (feat_freq_taxonomy.tsv: #OTU ID, 10B1, 10C1, ..., taxonomy)
 biom convert \
   -i export-R/freq-table/feat_freq_taxonomy.biom \
   -o export-R/freq-table/feat_freq_taxonomy.tsv \
@@ -466,48 +403,21 @@ biom convert \
   --process-obs-metadata taxonomy \
   --header-key taxonomy
 
-## Download biom file to read in R
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq_taxonomy.tsv ./export-R/freq-table/feat_freq_taxonomy.tsv
+## Download freq-taxon data to use in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq_taxonomy.tsv ./feat_freq_taxonomy.tsv
+
+## Add sequences and fungal traits to freq table
+nano export-R/freq-table/feat_freq_taxonomy.tsv #"FEATURE ID"
+qiime feature-table tabulate-seqs \
+  --i-data asvs_pdecon_unclst_noctl.qza \
+  --m-metadata-file fungal_traits.qza \
+  --m-metadata-file export-R/freq-table/feat_freq_taxonomy.tsv \
+  --o-visualization asvs_pdecon_traits.qzv
+
+## Download freq-seq-trait-taxon visualization (copy and paste from https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecon_traits.qzv asvs_pdecon_traits.qzv
 
 ## NOTE:
-# the conversion from biome ability in R is very poor considering you can only choose ONE header
-# from the input metadata file to be included in the tsv. It's getter to merge datasets in R.
-
-
-#-------------------------------------------------------#
-#---------------- EXPORT FREQ TABLES -------------------#
-#-------------------------------------------------------#
-
-## Export Rarefied table (feat-ID, Counts)
-qiime tools export \
-  --input-path core-metrics-results/rarefied_table.qza \
-  --output-path export-R/freq-table
-biom convert \
-  -i export-R/freq-table/feature-table.biom \
-  -o export-R/freq-table/rarified_feat_freq_full.tsv \
-  --to-tsv
-qiime tools export \
-  --input-path core-metrics-results-6mo/rarefied_table.qza \
-  --output-path export-R/freq-table
-biom convert \
-  -i export-R/freq-table/feature-table.biom \
-  -o export-R/freq-table/rarified_feat_freq_6mo.tsv \
-  --to-tsv
-qiime tools export \
-  --input-path core-metrics-results-12mo/rarefied_table.qza \
-  --output-path export-R/freq-table
-biom convert \
-  -i export-R/freq-table/feature-table.biom \
-  -o export-R/freq-table/rarified_feat_freq_12mo.tsv \
-  --to-tsv
-
-## Export freq tables
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/feat_freq.tsv export-R/freq-table/feat_freq.tsv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_full.tsv export-R/freq-table/rarified_feat_freq_full.tsv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_6mo.tsv export-R/freq-table/rarified_feat_freq_6mo.tsv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/rarified_feat_freq_12mo.tsv export-R/freq-table/rarified_feat_freq_12mo.tsv
-
-
-
-
-# https://drive.google.com/drive/u/2/folders/1mRpCmbO4PU8diPWHcYWyhKYvy5E7Gkr_
+# the conversion from biom ability in Qiime is very poor considering you can only choose ONE header
+# from the input metadata file to be included in the tsv. It's better to merge datasets in R.
+# Opted as well to remove rare ASV and rarefy in R.
