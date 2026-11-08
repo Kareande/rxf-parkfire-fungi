@@ -66,7 +66,7 @@ qiime demux summarize \
   --o-visualization seqs_demux.qzv
 
 ## Download above summary for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv .\seqs_demux.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv seqs_demux.qzv
 
 ## NOTES: 
 # Interactive quality plot for demux seqs shows steady quality in forward reads (no truncation necessary),
@@ -77,7 +77,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv .\seqs_d
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------- FILTERING BY READS -------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# job-filter.yaml
+# kubectl create -f job-filter.yaml
 
 ## Export to a TSV, this contains the counts
 qiime tools export \
@@ -90,16 +90,16 @@ qiime demux filter-samples \
   --m-metadata-file demux_summary_export/per-sample-fastq-counts.tsv \
   --p-where 'CAST([forward sequence count] AS INT) > 500' \
   --p-remove-empty \
-  --o-filtered-demux seqs_filt.qza \
+  --o-filtered-demux seqs_demux_filt.qza \
   --verbose
 
 ## Verify
 qiime demux summarize \
-  --i-data seqs_filt.qza \
-  --o-visualization seqs_filt.qzv
+  --i-data seqs_demux_filt.qza \
+  --o-visualization seqs_demux_filt.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_filt.qzv seqs_filt.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux_filt.qzv seqs_demux_filt.qzv
 
 ## NOTE:
 # Filtering of low read samples was necessary in order to use ITSxpress. Alternatively,
@@ -117,7 +117,7 @@ qiime dev refresh-cache
 
 ## Extract ITS sequencing from raw data, no clustering
 qiime itsxpress trim-pair-output-unmerged --verbose \
---i-per-sample-sequences seqs_filt.qza \
+--i-per-sample-sequences seqs_demux_filt.qza \
 --p-region ITS1 \
 --p-threads 0 \
 --p-cluster-id 1 \
@@ -146,29 +146,30 @@ qiime dada2 denoise-single \
   --i-demultiplexed-seqs seqs_its_extracted.qza \
   --p-trim-left 0 \
   --p-trunc-len 0 \
-  --o-representative-sequences asvs_dada2_single.qza \
-  --o-table table_dada2_single.qza \
-  --o-denoising-stats stats_dada2_single.qza \
-  --o-base-transition-stats bt_stats_dada2_single.qza \
+  --o-representative-sequences seqs_asvs_sgl.qza \
+  --o-table table_asvs_sgl.qza \
+  --o-denoising-stats stats_dada2_sgl.qza \
+  --o-base-transition-stats stats_dada2_btrans_sgl.qza \
   --p-n-threads 0
 
+## Get sample and feature seq freq and summary stats
   qiime metadata tabulate \
-  --m-input-file stats_dada2_single.qza  \
-  --o-visualization stats_dada2_single.qzv
+  --m-input-file stats_dada2_sgl.qza  \
+  --o-visualization stats_dada2_sgl.qzv
 qiime feature-table summarize \
-  --i-table table_dada2_single.qza \
+  --i-table table_asvs_sgl.qza \
   --m-metadata-file metadata.tsv \
-  --o-feature-frequencies feat_freq_dada2_single.qza \
-  --o-sample-frequencies smpl_freq_dada2_single.qza \
-  --o-summary table_dada2_single.qzv
+  --o-feature-frequencies feat_freq_asvs_sgl.qza \
+  --o-sample-frequencies smpl_freq_asvs_sgl.qza \
+  --o-summary table_asvs_sgl.qzv
 qiime feature-table tabulate-seqs \
-  --i-data asvs_dada2_single.qza \
-  --o-visualization asvs_dada2_single.qzv
+  --i-data seqs_asvs_sgl.qza \
+  --o-visualization seqs_asvs_sgl.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/stats_dada2_single.qzv stats_dada2_single.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_dada2_single.qzv table_dada2_single.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_dada2_single.qzv asvs_dada2_single.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/stats_dada2_sgl.qzv stats_dada2_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl.qzv table_asvs_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl.qzv seqs_asvs_sgl.qzv
 
 ## NOTES:
 # For single, the lowest % that made it through filter was 93% (besides 3E7 which had 49%), while
@@ -179,121 +180,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_dada2_single.qzv a
 
 
 #----------------------------------------------------------------------------------------------------------------------#
-#--------------------------------------------------- DECONTAMINATE ----------------------------------------------------#
+#------------------------------------------- TRAIN CLASSIFIER ON UNITE DATA -------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# https://jordenrabasco.github.io/Q2_Decontam_Tutorial.html
-# job-decontam.yaml
-
-## Upload mock community for Filtering
-kubectl cp data\mock_sequences.fasta qiime2-pod:\biovol\mock_sequences.fasta
-
-## Remove mock community from pos ctls
-qiime tools import \
-  --type 'FeatureData[Sequence]' \
-  --input-path mock_sequences.fasta \
-  --output-path mock_seqs.qza
-qiime feature-table filter-features \
-  --i-table table_dada2_single.qza \
-  --m-metadata-file mock_seqs.qza \
-  --p-exclude_ids \
-  --o-filtered-table table_dada2_single_filt.qza
-
-## Identify contaminant seqs (prevalence method)
-qiime quality-control decontam-identify \
-  --i-table table_dada2_single_filt.qza \
-  --m-metadata-file metadata.tsv \
-  --p-method prevalence \
-  --p-prev-control-column Sample_or_Control \
-  --p-prev-control-indicator control \
-  --o-decontam-scores decontam_pvlnc_scores_unclst_sgl.qza
-
-## Visualize the decontam scores
-qiime quality-control decontam-score-viz \
-  --i-decontam-scores decontam_pvlnc_scores_unclst_sgl.qza \
-  --i-table table_dada2_single.qza \
-  --i-rep-seqs asvs_dada2_single.qza \
-  --p-threshold 0.1 \
-  --p-no-weighted \
-  --p-bin-size 0.05 \
-  --o-visualization decontam_pvlnc_scores_unclst_sgl.qzv
-
-## Filter out contaminants from table
-qiime feature-table filter-features \
-  --i-table table_dada2_single.qza \
-  --m-metadata-file decontam_pvlnc_scores_unclst_sgl.qza \
-  --p-where '[p]>0.1 OR [p] IS NULL' \
-  --o-filtered-table table_pdecont_unclst_sgl.qza
-
-## Filter out contaminants from seqs
-qiime feature-table filter-seqs \
-  --i-data asvs_dada2_single.qza \
-  --i-table table_pdecont_unclst_sgl.qza \
-  --o-filtered-data asvs_pdecont_sgl.qza
-
-## Get sample and feature seq freq and summary stats
-qiime feature-table summarize \
-  --i-table table_pdecont_unclst_sgl.qza \
-  --m-metadata-file metadata.tsv \
-  --o-feature-frequencies feat_freq_pdecont_unclst_sgl.qza \
-  --o-sample-frequencies smpl_freq_pdecont_unclst_sgl.qza \
-  --o-summary table_pdecont_unclst_sgl.qzv
-
-## Visualize feature IDs w/ BLAST links
-qiime feature-table tabulate-seqs \
-  --i-data asvs_pdecont_sgl.qza \
-  --m-metadata-file feat_freq_pdecont_unclst_sgl.qza \
-  --o-visualization asvs_pdecont_sgl.qzv
-
-## Download the visualization
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/decontam_pvlnc_scores_unclst_sgl.qzv decontam_pvlnc_scores_unclst_sgl.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_pdecont_unclst_sgl.qzv table_pdecont_unclst_sgl.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecont_sgl.qzv asvs_pdecont_sgl.qzv
-
-## NOTES: 
-# The combined decontamination filtered out 30 ASVs and 8.5mil seqs (out of 27mil). The prevalence
-# method filtered out 134 ASVs and 8.5mil seqs. I also ran both decontam methods on the unclustered
-# sequences, and there was little difference between methods, but there are twice as many ASVs as
-# the clustered though the total seqs (18-19mil) ended up being similar to the 97% clustered data.
-# The mean frequences per sample are all similar (~117k and ~120k), while the frequency per feature
-# is of course higher in the clustered data where ASVs were collapsed together (~7k and ~4.5k).
-
-
-#----------------------------------------------------------------------------------------------------------------------#
-#-------------------------------------------------- FILTER OUT CTLS ---------------------------------------------------#
-#----------------------------------------------------------------------------------------------------------------------#
-
-## Filter out ctls from table and seqs
-qiime feature-table filter-samples \
-  --i-table table_pdecont_unclst_sgl.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-filtered-table table_pdecon_unclst_noctl.qza
-qiime feature-table filter-seqs \
-  --i-data asvs_pdecont_sgl.qza \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --o-filtered-data asvs_pdecon_unclst_noctl.qza
-
-## Get sample and feature seq freq and summary stats
-qiime feature-table summarize \
-  --i-table table_pdecon_unclst_noctl.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-feature-frequencies feat_freq_pdecon_unclst_noctl.qza \
-  --o-sample-frequencies smpl_freq_pdecon_unclst_noctl.qza \
-  --o-summary table_pdecon_unclst_noctl.qzv
-
-## Verify
-qiime feature-table tabulate-seqs \
-  --i-data asvs_pdecon_unclst_noctl.qza \
-  --m-metadata-file feat_freq_pdecon_unclst_noctl.qza \
-  --o-visualization asvs_pdecon_unclst_noctl.qzv
-
-## Download above for visualization (https://view.qiime2.org/)
-#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecon_unclst_noctl.qzv asvs_pdecon_unclst_noctl.qzv
-
-
-#----------------------------------------------------------------------------------------------------------------------#
-#----------------------------------------- ASSIGN TAXONOMY - TRAIN CLASSIFIER -----------------------------------------#
-#----------------------------------------------------------------------------------------------------------------------#
-#job-classifier-UNITE-training.yaml
+# kubectl create -f job-classifier-training.yaml
 
 ## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
 kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta
@@ -318,32 +207,306 @@ qiime feature-classifier fit-classifier-naive-bayes \
   --i-reference-taxonomy unite_taxonomy.qza \
   --o-classifier classifier.qza
 
+## NOTE:
+# your reference database should contain sequences obtained with the same primers you used
+# to generate the amplicons in your experiment.
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------- ASSIGN TAXONOMY TO ASV ------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-classifier-trained.yaml
+
 ## Assign taxonomy to ASVs
 qiime feature-classifier classify-sklearn \
   --i-classifier classifier.qza \
-  --i-reads asvs_pdecon_unclst_noctl.qza \
-  --o-classification asvs_taxaUNITE_unclst_trained.qza
+  --i-reads seqs_asvs_sgl.qza \
+  --o-classification taxa_asvs_trained.qza
 
 ## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
 qiime feature-table tabulate-seqs \
-  --i-data asvs_pdecon_unclst_noctl.qza \
-  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
-  --o-visualization asvs_taxaUNITE_unclst_trained.qzv
+  --i-data seqs_asvs_sgl.qza \
+  --i-taxonomy taxa_asvs_trained.qza \
+  --m-metadata-file feat_freq_asvs_sgl.qza \
+  --o-visualization taxa_asvs_trained.qzv
 
 ## Create barplot
 qiime taxa barplot \
-  --i-table table_pdecon_unclst_noctl.qza  \
-  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
-  --m-metadata-file metadata_noctl.tsv \
-  --o-visualization barplots_taxaUNITE_unclst_trained.qzv
+  --i-table table_asvs_sgl.qza  \
+  --i-taxonomy taxa_asvs_trained.qza \
+  --m-metadata-file metadata.tsv \
+  --o-visualization barplot_taxa_asvs_trained.qzv
 
 ## Download visualizations (https://view.qiime2.org/)
-#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_taxaUNITE_unclst_trained.qzv asvs_taxaUNITE_unclst_trained.qzv
-#kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplots_taxaUNITE_unclst_trained.qzv barplots_taxaUNITE_unclst_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_asvs_trained.qzv taxa_asvs_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_asvs_trained.qzv barplot_taxa_asvs_trained.qzv
+
+## NOTE:
+# The classifier detected 46 mock ASVs at the genus level. The original mock sequences were nowhere in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock ASV were detected in up to 47 other samples. I copied/pasted from the .qza file all mock ASVs.
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#------------------------------------------------------ CLUSTER -------------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-cluster-single.yaml
+
+## Cluster on 97% identity using vsearch
+qiime vsearch cluster-features-de-novo \
+--i-sequences seqs_asvs_sgl.qza \
+--i-table table_asvs_sgl.qza  \
+--p-perc-identity 0.97 \
+--p-threads 0 \
+--o-clustered-table table_otus97_sgl.qza \
+--o-clustered-sequences seqs_otus97_sgl.qza
+
+## Get sample and feature seq freq and summary stats
+qiime feature-table summarize \
+  --i-table table_otus97_sgl.qza \
+  --m-metadata-file metadata.tsv \
+  --o-feature-frequencies feat_freq_otus97_sgl.qza \
+  --o-sample-frequencies smpl_freq_otus97_sgl.qza \
+  --o-summary table_otus97_sgl.qzv
+
+## Visualize feature IDs to sequences w/ BLAST links
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus97_sgl.qza \
+  --m-metadata-file feat_freq_otus97_sgl.qza \
+  --o-visualization seqs_otus97_sgl.qzv
+
+## Download above summaries for visualization (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_otus97_sgl.qzv table_otus97_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_otus97_sgl.qzv seqs_otus97_sgl.qzv
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------- TRAIN CLASSIFIER ON 97% CLUST UNITE DATA --------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-classifier-training-clust.yaml
+
+## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
+kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_97_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_97_s_19.02.2025.fasta
+kubectl cp sh_qiime_release_s_19.02.2025\sh_taxonomy_qiime_ver10_97_s_19.02.2025.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_97_s_19.02.2025.txt
+
+## Import latest UNITE data
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path sh_refs_qiime_ver10_97_s_19.02.2025.fasta \
+  --output-path unite_97.qza
+
+## Import associated UNITE taxonomy file
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path sh_taxonomy_qiime_ver10_97_s_19.02.2025.txt \
+--output-path unite_taxonomy_97.qza
+
+## Train classifier
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads unite_97.qza \
+  --i-reference-taxonomy unite_taxonomy_97.qza \
+  --o-classifier classifier_97.qza
 
 ## NOTE:
 # your reference database should contain sequences obtained with the same primers you used
 # to generate the amplicons in your experiment.
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#---------------------------------------------- ASSIGN TAXONOMY TO OTU ------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-classifier-trained-clust.yaml
+
+## Assign taxonomy to OTUs
+qiime feature-classifier classify-sklearn \
+  --i-classifier classifier_97.qza \
+  --i-reads seqs_otus97_sgl.qza \
+  --o-classification taxa_otus97_trained.qza
+
+## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus97_sgl.qza \
+  --i-taxonomy taxa_otus97_trained.qza \
+  --m-metadata-file feat_freq_otus97_sgl.qza \
+  --o-visualization taxa_otus97_trained.qzv
+
+## Create barplot
+qiime taxa barplot \
+  --i-table table_otus97_sgl.qza  \
+  --i-taxonomy taxa_otus97_trained.qza \
+  --m-metadata-file metadata.tsv \
+  --o-visualization barplot_taxa_otus97_trained.qzv
+
+## Download visualizations (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97_trained.qzv taxa_otus97_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97_trained.qzv barplot_taxa_otus97_trained.qzv
+
+## NOTE:
+# The classifier detected ?? mock OTUs at the ??? level. The original mock sequences ??? in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock OTU were detected in up to ??? other samples. I copied/pasted from the .qza file all mock OTUs.
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------- TRAIN CLASSIFIER ON UNTRIMMED SEQS -----------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-classifier-training-dev.yaml
+
+## Upload latest UNITE data and associated taxonomy file, dev version that is untrimmed (w/ mock community data added)
+kubectl cp sh_qiime_release_s_19.02.2025\developer\sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta
+kubectl cp sh_qiime_release_s_19.02.2025\developer\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt
+
+## Import latest UNITE data
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path sh_refs_qiime_ver10_dynamic_s_19.02.2025_dev.fasta \
+  --output-path unite_dev.qza
+
+## Import associated UNITE taxonomy file
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025_dev.txt \
+--output-path unite_taxonomy_dev.qza
+
+## Train classifier
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads unite_dev.qza \
+  --i-reference-taxonomy unite_taxonomy_dev.qza \
+  --o-classifier classifier_dev.qza
+
+## NOTE:
+# your reference database should contain sequences obtained with the same primers you used
+# to generate the amplicons in your experiment.
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#----------------------------------------- ASSIGN TAXONOMY TO UNTRIMMED SEQS ------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# kubectl create -f job-classifier-trained-dev.yaml
+
+## Assign taxonomy to ASVs
+qiime feature-classifier classify-sklearn \
+  --i-classifier classifier_dev.qza \
+  --i-reads seqs_demux.qza \
+  --o-classification taxa_demux_trained.qza
+
+## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
+qiime feature-table tabulate-seqs \
+  --i-data seqs_demux.qza \
+  --i-taxonomy unite_taxonomy_dev.qza \
+  --m-metadata-file demux_summary_export/per-sample-fastq-counts.tsv \
+  --o-visualization taxa_demux_trained.qzv
+
+## Download visualizations (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_demux_trained.qzv taxa_demux_trained.qzv
+
+## NOTE:
+# 
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#--------------------------------------------------- DECONTAMINATE ----------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+# https://jordenrabasco.github.io/Q2_Decontam_Tutorial.html
+# kubectl create -f job-decontam-pvlnc.yaml
+
+## Remove mock community from pos ctls
+qiime feature-table filter-features \
+  --i-table table_asvs_sgl.qza \
+  --m-metadata-file mock_seqs.qza \
+  --p-exclude-ids \
+  --o-filtered-table table_asvs_sgl_filt.qza
+
+## Identify contaminant seqs (prevalence method)
+qiime quality-control decontam-identify \
+  --i-table table_asvs_sgl_filt.qza \
+  --m-metadata-file metadata.tsv \
+  --p-method prevalence \
+  --p-prev-control-column Sample_or_Control \
+  --p-prev-control-indicator control \
+  --o-decontam-scores decontam_pvlnc_scores_asvs_sgl.qza
+
+## Visualize the decontam scores
+qiime quality-control decontam-score-viz \
+  --i-decontam-scores decontam_pvlnc_scores_asvs_sgl.qza \
+  --i-table table_asvs_sgl_filt.qza \
+  --i-rep-seqs seqs_asvs_sgl.qza \
+  --p-threshold 0.1 \
+  --p-no-weighted \
+  --p-bin-size 0.05 \
+  --o-visualization decontam_pvlnc_scores_asvs_sgl.qzv
+
+## Filter out contaminants from table
+qiime feature-table filter-features \
+  --i-table table_asvs_sgl.qza \
+  --m-metadata-file decontam_pvlnc_scores_asvs_sgl.qza \
+  --p-where '[p]>0.1 OR [p] IS NULL' \
+  --o-filtered-table table_asvs_sgl_pdecont.qza
+
+## Filter out contaminants from seqs
+qiime feature-table filter-seqs \
+  --i-data seqs_asvs_sgl.qza \
+  --i-table table_asvs_sgl_pdecont.qza \
+  --o-filtered-data seqs_asvs_sgl_pdecont.qza
+
+## Get sample and feature seq freq and summary stats
+qiime feature-table summarize \
+  --i-table table_asvs_sgl_pdecont.qza \
+  --m-metadata-file metadata.tsv \
+  --o-feature-frequencies feat_freq_asvs_sgl_pdecont.qza \
+  --o-sample-frequencies smpl_freq_asvs_sgl_pdecont.qza \
+  --o-summary table_asvs_sgl_pdecont.qzv
+
+## Visualize feature IDs w/ BLAST links
+qiime feature-table tabulate-seqs \
+  --i-data seqs_asvs_sgl_pdecont.qza \
+  --m-metadata-file feat_freq_asvs_sgl_pdecont.qza \
+  --o-visualization seqs_asvs_sgl_pdecont.qzv
+
+## Download the visualization
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/decontam_pvlnc_scores_asvs_sgl.qzv decontam_pvlnc_scores_asvs_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl_pdecont.qzv table_asvs_sgl_pdecont.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl_pdecont.qzv seqs_asvs_sgl_pdecont.qzv
+
+## NOTES: 
+# The combined decontamination filtered out 30 ASVs and 8.5mil seqs (out of 27mil). The prevalence
+# method filtered out 134 ASVs and 8.5mil seqs. I also ran both decontam methods on the unclustered
+# sequences, and there was little difference between methods, but there are twice as many ASVs as
+# the clustered though the total seqs (18-19mil) ended up being similar to the 97% clustered data.
+# The mean frequences per sample are all similar (~117k and ~120k), while the frequency per feature
+# is of course higher in the clustered data where ASVs were collapsed together (~7k and ~4.5k).
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------- FILTER OUT CTLS ---------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+
+## Filter out ctls from table and seqs
+qiime feature-table filter-samples \
+  --i-table table_asvs_sgl_pdecont.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-filtered-table table_asvs_sgl_noctl.qza
+qiime feature-table filter-seqs \
+  --i-data seqs_asvs_sgl_pdecont.qza \
+  --i-table table_asvs_sgl_noctl.qza \
+  --o-filtered-data seqs_asvs_sgl_noctl.qza
+
+## Get sample and feature seq freq and summary stats
+qiime feature-table summarize \
+  --i-table table_asvs_sgl_noctl.qza \
+  --m-metadata-file metadata_noctl.tsv \
+  --o-feature-frequencies feat_freq_asvs_sgl_noctl.qza \
+  --o-sample-frequencies smpl_freq_asvs_sgl_noctl.qza \
+  --o-summary table_asvs_sgl_noctl.qzv
+
+## Verify
+qiime feature-table tabulate-seqs \
+  --i-data seqs_asvs_sgl_noctl.qza \
+  --m-metadata-file feat_freq_asvs_sgl_noctl.qza \
+  --o-visualization seqs_asvs_sgl_noctl.qzv
+
+## Download above for visualization (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl_noctl.qzv seqs_asvs_sgl_noctl.qzv
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -356,15 +519,15 @@ conda activate q2-fungal-traits-qiime2-2026.4
 
 ## Fungal trait annotation
 qiime fungal-traits annotate \
-  --i-taxonomy asvs_taxaUNITE_unclst_trained.qza \
-  --o-fungal-traits fungal_traits.qza
+  --i-taxonomy taxa_asvs_trained.qza \
+  --o-fungal-traits taxa_traits_asvs.qza
 qiime metadata tabulate \
-  --m-input-file fungal_traits.qza \
-  --o-visualization fungal_traits.qzv
+  --m-input-file taxa_traits_asvs.qza \
+  --o-visualization taxa_traits_asvs.qzv
 conda deactivate
 
 ## Download trait-taxa visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/fungal_traits.qzv fungal_traits.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_traits_asvs.qzv taxa_traits_asvs.qzv
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -373,22 +536,22 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/fungal_traits.qzv funga
 
 ## Export freq table as .biom (feature-table.biom: #OTU ID, taxonomy, confidence)
 qiime tools export \
-  --input-path table_pdecon_unclst_noctl.qza \
+  --input-path table_asvs_sgl_noctl.qza \
   --output-path export-R/freq-table
 
-## Export fungal traits to .tsv (metadata.tsv: feature-id, taxon, confidence, traits)
+## Export taxa-traits to .tsv (metadata.tsv: feature-id, taxon, confidence, traits)
 qiime tools export \
-  --input-path fungal_traits.qza \
+  --input-path taxa_traits_asvs.qza \
   --output-path export-R/traits
 
-## Download fungal traits data to use in R
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/traits/metadata.tsv ./fungal_traits.tsv
+## Download taxa-traits data to use in R
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/traits/metadata.tsv ./taxa_traits_asvs.tsv
 
-## Replace header of trait table so that the tables match
+## Replace header of taxa-trait table so that the tables match
 # "feature-id  taxon confidence" -> "#OTU ID  taxonomy  confidence"
 nano export-R/traits/metadata.tsv
 
-## Add taxon metadata to the ASV freq table .biom (using trait metadata)
+## Add taxa metadata to the freq table .biom (using trait metadata)
 biom add-metadata \
  -i export-R/freq-table/feature-table.biom \
  --observation-metadata-fp export-R/traits/metadata.tsv \
@@ -409,13 +572,13 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/export-R/freq-table/fea
 ## Add sequences and fungal traits to freq table
 nano export-R/freq-table/feat_freq_taxonomy.tsv #"FEATURE ID"
 qiime feature-table tabulate-seqs \
-  --i-data asvs_pdecon_unclst_noctl.qza \
-  --m-metadata-file fungal_traits.qza \
+  --i-data seqs_asvs_sgl_noctl.qza \
+  --m-metadata-file taxa_traits_asvs.qza \
   --m-metadata-file export-R/freq-table/feat_freq_taxonomy.tsv \
-  --o-visualization asvs_pdecon_traits.qzv
+  --o-visualization seqs_asvs_sgl_traits.qzv
 
 ## Download freq-seq-trait-taxon visualization (copy and paste from https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/asvs_pdecon_traits.qzv asvs_pdecon_traits.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl_traits.qzv seqs_asvs_sgl_traits.qzv
 
 ## NOTE:
 # the conversion from biom ability in Qiime is very poor considering you can only choose ONE header
