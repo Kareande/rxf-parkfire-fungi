@@ -296,8 +296,8 @@ qiime feature-table tabulate-seqs \
 #job-classifier-UNITE-training.yaml
 
 ## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
-kubectl cp data\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta
-kubectl cp data\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt
+kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta
+kubectl cp sh_qiime_release_s_19.02.2025\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_dynamic_s_19.02.2025.txt
 
 ## Import latest UNITE data
 qiime tools import \
