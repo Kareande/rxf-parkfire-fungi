@@ -74,7 +74,7 @@ frq_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.name
          site = factor(site, levels = c("2", "1", "4", "3", "5", "6",                      # RxF before NoRxF site
                                         "7", "8", "10", "9", "12", "11"))) |>
   select(asv, site, subsite, treatment, month, pair, tmntpair, abundance) |>               # re-order desired columns
-  filter(frq_tbl, abundance > 0)
+  filter(abundance > 0)
 frq_tbl
 
 ## Histogram
@@ -428,10 +428,6 @@ friedman.test(count_gmtrx)                          #p = 0.7055, null accepted
 # Data is normal enough to justify using parametric tests. Did both, but will only use parametric results.
 # There is no support for the hypothesis that ASV richness is different between treatments, timepoints, nor
 # treatments across timepoints.
-2 sample t.test for independence when ignoring month
-# 2-way indep ANOVA: continuous dep var, two factors (tmnt*month), repeat obs on subject (pair for month and tmnt)
-# one formula adds in the pair association, but the site diff is lost
-# other formula accounts for only re-measures of site, but paired association is lost
 
 ## Test timepoint difference Roualdes' way
 ## Does the mean differences in ASV counts significantly differ across treatments (all sites) or pairs?
@@ -453,7 +449,7 @@ anova(fit)                                            #p = 0.03106, null rejecte
 ## Visualize mean richness per paired site across timepoints
 ctheme <- c("#807d7d", "#ac2b2b")                                             # designate fill colors for treatments
 ctheme2 <- c("#008080", "#CC5500")                                            # designate fill colors for months
-ccap <- "#4b4a4a" 
+ccap <- "#4b4a4a"
 metric <- "Mean Richness"
 plttit <- paste(metric, "of ASV Across Paired Treatments and Months \n")      # designate plot title
 xtit <- "\n Site Pair"                                                        # designate x-title
@@ -513,7 +509,6 @@ rich_tbl |> summarise(.by = c(site, treatment, month, pair),       # group data
                                   colour = "white"))                 # strip font color
 ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
-
 ## NOTE:
 # Timepoint analysis can't be done by subsite because not all subsites have their 6 and
 # 12mo sample comparisons for two reasons (1) the mislabeling of sites led to some sites
@@ -522,23 +517,6 @@ ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_ty
 #
 # There is no support for the hypothesis that the richness is different across timepoints for either
 # treatment (Wildfire only, or RxF + wildfire).
-#
-# Professor Roualdes initially grouped by site (summing the counts for each subsite),
-# but then stated because they are their own "locations" and not some "smallest unit
-# of measurement", that they don't need to be collapsed. He then said it's okay
-# to remove the zeroes, and the ecologist stats guide supported this by saying that
-# making zero observation counts important (that is, keeping them for what they are)
-# conflates their meaning. After removing zeroes, the data was normal enough to use
-# perimetric ANOVA. Still, no significant difference between diversity.
-# Roualdes also says that "this analysis would be enough for me", but said he is not my
-# comittee nor a peer reviewer so I could still look at the other metrics (Shannon diversity
-# and eveness) in the same fashion.
-# He also did not seperate out the timepoints, which at first troubled me.
-# After thinking about it, for the question we were answering it seemed appropriate. If
-# sampling over time is a way to deal with pseudoreplication (per the paper he gave us),
-# then leaving it as one dataset seems more statistically sound than seprating them out and
-# then having two, more pseudreplicated datasets than one. I still looked anyway, and it
-# didn't make a difference.
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -771,7 +749,7 @@ sample_lookup <- function(df, sampleid) {
 
 ## NMDS ordination using Bray-Curtis distance matrix
 set.seed(10192026)
-nmds <- metaMDS(bray)
+nmdsb <- metaMDS(bray)
 metric <- "Bray Curtis Distance"
 captit <- "Matrix Used: <i>BrayCurtis</i>,Stress: <i>0.2119787</i>"
 plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
@@ -779,7 +757,7 @@ ccap <- "#363535"
 plt_type <- "ordntn"
 
 ## Plot NDMS ordination by site
-scores(nmds) |>   # by site
+scores(nmdsb) |>   # by site
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = site)) +
@@ -793,7 +771,7 @@ scores(nmds) |>   # by site
         plot.caption.position = "plot")                       # align caption to plot
 
 ## Plot NDMS ordination colored by treatment
-scores(nmds) |>   # by treatment
+scores(nmdsb) |>   # by treatment
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = treatment)) +
@@ -806,7 +784,7 @@ scores(nmds) |>   # by treatment
         plot.caption.position = "plot")                       # align caption to plot
 
 ## Plot NDMS ordination colored by month
-scores(nmds) |>   # by month
+scores(nmdsb) |>   # by month
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples") |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = month)) +
@@ -819,13 +797,13 @@ scores(nmds) |>   # by month
         plot.caption.position = "plot")                       # align caption to plot
 
 ## Plot NDMS ordination colored by treatment and month
-meta_nmds <- scores(nmds) |>   # by tmntmonth
+meta_nmdsb <- scores(nmdsb) |>   # by tmntmonth
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples")
-centroid <- meta_nmds |>
+centroid <- meta_nmdsb |>
   summarize(.by = c(treatment, month, tmntmonth),
             NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
-meta_nmds |>
+meta_nmdsb |>
   ggplot(aes(x = NMDS1, y = NMDS2, color = tmntmonth)) +
   geom_point() +
   stat_ellipse(alpha = 0.23, show.legend = FALSE) +
@@ -847,11 +825,58 @@ meta_nmds |>
 ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Test variation with ADONIS
-blc <- with(meta_nmds, how(nperm = 999, blocks = site))
-adonis2(bray ~ treatment*month, data = meta_nmds, permutations = blc)
+blc <- with(meta_nmdsb, how(nperm = 999, blocks = site))
+adonis2(bray ~ treatment*month, data = meta_nmdsb, permutations = blc)
 # or
-ord <- dbrda(bray ~ treatment*month + Condition(site), data = meta_nmds, method = "bray") 
+ord <- dbrda(bray ~ treatment*month + Condition(site), data = meta_nmdsb, method = "bray") 
 anova(ord, permutations = blc )`
+
+## Generate Bray Curtis distance matrix
+jacc <- vegdist(frq_mat, method = "jaccard")
+str(jacc)                         # look at structure
+samples <- attr(jacc, "Labels")   # access labels
+jacc_tbl <- as_tibble(jacc) |>
+  cbind(samples)
+jacc_tbl
+
+## NMDS ordination using Bray-Curtis distance matrix
+set.seed(10192026)
+nmdsj <- metaMDS(jacc)
+metric <- "Jaccard Distance"
+captit <- "Matrix Used: <i>Jaccard</i>,Stress: <i>0.2119787</i>"
+plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
+ccap <- "#363535"
+plt_type <- "ordntn"
+
+## Plot NDMS ordination colored by treatment and month
+meta_nmdsj <- scores(nmdsj) |>   # by tmntmonth
+  as_tibble(rownames = "samples") |>
+  sample_lookup(sampleid = "samples")
+centroid <- meta_nmdsj |>
+  summarize(.by = c(treatment, month, tmntmonth),
+            NMDS1 = mean(NMDS1), NMDS2 = mean(NMDS2))
+meta_nmdsj |>
+  ggplot(aes(x = NMDS1, y = NMDS2, color = tmntmonth)) +
+  geom_point() +
+  stat_ellipse(alpha = 0.23, show.legend = FALSE) +
+  geom_point(data = centroid, size = 5, shape = 21, color = "black",
+             aes(fill = tmntmonth), show.legend = FALSE) +
+  #geom_text(aes(label = subsite), position = "nudge") +    # label point w/ site
+  scale_color_manual(values = c("#202020", "#a7a3a3", "#ac2b2b", "#f38383"),
+                     name = NULL) +
+  scale_fill_manual(values = c("#202020", "#a7a3a3", "#ac2b2b", "#f38383")) +
+  labs(title = plttit,
+       caption = captit) +
+  theme_minimal() +
+  theme(plot.title.position = "plot",                             # align title to plot
+        plot.title = element_text(face = "bold"),                 # make title bold
+        plot.caption = element_markdown(hjust = 0, color = ccap), # move caption to be left-justified
+        plot.caption.position = "plot",                           # align caption to plot
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"))
+ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
+
+## Test variation with ADONIS
 
 ## Cannot compare at the subsite reolution b/c cannot match the 6 and 12mo samples because some are missing, but
 # also the labeling mishap. So, can only compare at the site level by taking the mean for each site.

@@ -71,7 +71,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv Qiime/vi
 ## NOTES: 
 # Interactive quality plot for demux seqs shows steady quality in forward reads (no truncation necessary),
 # but poor quality <30 for reverse reads. Dumping reverse read and only processing as single justified,
-# still going to do both paired and single to compare.
+# but chose to run pipeline with paired reads to compare.
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -121,19 +121,20 @@ qiime itsxpress trim-pair-output-unmerged --verbose \
 --p-region ITS1 \
 --p-threads 0 \
 --p-cluster-id 1 \
---o-trimmed seqs_its_extracted.qza
+--o-trimmed seqs_demux_trimmed.qza
 
 ## Summarize seqs for visualization
 qiime demux summarize \
-  --i-data seqs_its_extracted.qza \
-  --o-visualization seqs_its_extracted.qzv
+  --i-data seqs_demux_trimmed.qza \
+  --o-visualization seqs_demux_trimmed.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv Qiime/visualizations/seqs_its_extracted.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux_trimmed.qzv Qiime/visualizations/seqs_demux_trimmed.qzv
 
 ## NOTES: 
-# You can see evidence that the ITS1 region was extracted by looking at the trimmed seqs
-# interactive quality plot.
+# You can see evidence that the ITS1 region was extracted by looking at the trimmed seqs interactive quality plot. There
+# N samples: 157
+# Median f-reads per sample: 14697
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -143,7 +144,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv 
 
 ## Use dada2 to denoise, dereplicate, and filter chimeras
 qiime dada2 denoise-single \
-  --i-demultiplexed-seqs seqs_its_extracted.qza \
+  --i-demultiplexed-seqs seqs_demux_trimmed.qza \
   --p-trim-left 0 \
   --p-trunc-len 0 \
   --o-representative-sequences seqs_asvs_sgl.qza \
@@ -172,11 +173,16 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl.qzv Qiim
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl.qzv Qiime/visualizations/seqs_asvs_sgl.qzv
 
 ## NOTES:
-# For single, the lowest % that made it through filter was 93% (besides 3E7 which had 49%), while
-# the paired had 28%-89%. Single kept 4280 with a max length of 424, while paired only kept 3223
-# with a max length of 471. Single identified 4280 unique features out of 27mil obs, while paired
-# only identified 3223 out of 20mil obs. Single had a mean freq per feature of 6368, while paired
-# had a mean of 6308.
+# Single --
+# >93% seqs made it through filter (besides 3E7's which had 49%)
+# N samples: 157
+# Unique ASV: 4280 out of 27mil total obs
+# Mean freq per ASV: 6368
+# Paired --
+# 28%-89% seqs made it through filter
+# N samples: 157
+# Unique ASV: 3223 out of 20mil total obs
+# Mean freq per ASV: 6308
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -208,8 +214,8 @@ qiime feature-classifier fit-classifier-naive-bayes \
   --o-classifier classifier.qza
 
 ## NOTE:
-# your reference database should contain sequences obtained with the same primers you used
-# to generate the amplicons in your experiment.
+# Your reference database should contain sequences obtained with the same primers you used to generate the amplicons
+# in your experiment. Any trimming and clustering should also be matched (developer UNITE data is untrimmed).
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -242,8 +248,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_asvs_trained.qzv Q
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_asvs_trained.qzv Qiime/visualizations/barplot_taxa_asvs_trained.qzv
 
 ## NOTE:
-# The classifier detected 46 mock ASVs at the genus level. The original mock sequences were nowhere in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock ASV were detected in up to 47 other samples. I copied/pasted from the .qza file all mock ASVs.
+# 4280 unique ASVs w/ a mean length of 171bp
+# The classifier detected 46 mock ASVs at the genus level. The original mock sequences are nowhere in my dataset.
+# Some mock ASV were detected in up to 47 other samples. I copied/pasted from the .qza file all mock ASVs.
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -305,6 +312,22 @@ qiime feature-table tabulate-seqs \
 ## Download above summaries for visualization (https://view.qiime2.org/)
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_otus99_sgl.qzv Qiime/visualizations/table_otus99_sgl.qzv
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_otus99_sgl.qzv Qiime/visualizations/seqs_otus99_sgl.qzv
+
+## NOTE:
+# 97% clustereing --
+# N samples: 157
+# Unique OTU: 2776 out of >27mil total obs
+# Mean freq per OTU: 9,818.6
+# Mean freq per sample: 173,608
+# Median freq per OTU: 17.5
+# Median freq per sample: 13,211
+# 99% clustereing --
+# N samples: 157
+# Unique OTU: 3453 out of >27mil total obs
+# Mean freq per OTU: 7,893
+# Mean freq per sample: 173,608
+# Median freq per OTU: 19
+# Median freq per sample: 13,211
 
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------- TRAIN CLASSIFIER ON CLUST UNITE DATA ----------------------------------------#
@@ -396,8 +419,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97_trained.qzv
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97_trained.qzv Qiime/visualizations/barplot_taxa_otus97_trained.qzv
 
 ## NOTE:
-# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+# 2776 unique OTUs w/ a mean length of 171bp
+# The classifier detected 29 mock OTUs at the genus level. The original mock sequences are nowhere in my dataset.
+# Some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
 
 ## Assign taxonomy to 97% clustered OTUs using dynamic classifier
 qiime feature-classifier classify-sklearn \
@@ -424,8 +448,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97dyn_trained.
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97dyn_trained.qzv Qiime/visualizations/barplot_taxa_otus97dyn_trained.qzv
 
 ## NOTE:
-# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+# 2776 unique OTUs w/ a mean length of 171bp
+# The classifier detected 19 mock OTUs at the genus level. The original mock sequences are nowhere in my dataset.
+# Some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
 
 ## Assign taxonomy to 99% clust OTUs using 99% classifier
 qiime feature-classifier classify-sklearn \
@@ -452,8 +477,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus99_trained.qzv
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus99_trained.qzv Qiime/visualizations/barplot_taxa_otus99_trained.qzv
 
 ## NOTE:
-# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+# ??? unique OTUs w/ a mean length of ???bp
+# The classifier detected ??? mock OTUs at the ??? level. The original mock sequences are ??? in my dataset.
+# Some mock OTU were detected in up to ??? other samples. I copied/pasted from the .qza file all mock OTU.
 
 ## Assign taxonomy to 99% clust OTUs using dynamic classifier
 qiime feature-classifier classify-sklearn \
@@ -480,8 +506,9 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus99dyn_trained.
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus99dyn_trained.qzv Qiime/visualizations/barplot_taxa_otus99dyn_trained.qzv
 
 ## NOTE:
-# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+# 3453 unique OTUs w/ a mean length of 170bp
+# The classifier detected 27 mock OTUs at the genus level. The original mock sequences are nowhere in my dataset.
+# Some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -548,6 +575,14 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/decontam_pvlnc_scores_a
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl_pdecont.qzv table_asvs_sgl_pdecont.qzv
 kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl_pdecont.qzv seqs_asvs_sgl_pdecont.qzv
 
+## NOTE:
+# N samples: 
+# Unique OTU: 
+# Mean freq per OTU: 
+# Mean freq per sample: 
+# Median freq per OTU: 
+# Median freq per sample: 
+
 ## NOTES: 
 # The combined decontamination filtered out 30 ASVs and 8.5mil seqs (out of 27mil). The prevalence
 # method filtered out 134 ASVs and 8.5mil seqs. I also ran both decontam methods on the unclustered
@@ -555,8 +590,6 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl_pdecont.q
 # the clustered though the total seqs (18-19mil) ended up being similar to the 97% clustered data.
 # The mean frequences per sample are all similar (~117k and ~120k), while the frequency per feature
 # is of course higher in the clustered data where ASVs were collapsed together (~7k and ~4.5k).
-
-
 #----------------------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------- FILTER OUT CTLS ---------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#

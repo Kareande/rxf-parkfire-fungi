@@ -15,7 +15,7 @@ spec:
         command:
         - /bin/sh
         - -c
-        - 'cd /biovol && echo "**Initializing environment on $(date)...**" && conda install -c bioconda -c conda-forge ITSxpress --verbose && qiime dev refresh-cache && echo "**Processing beginning on $(date)...**" && qiime itsxpress trim-pair-output-unmerged --verbose --i-per-sample-sequences seqs_demux_filt.qza --p-region ITS1 --p-threads 0 --p-cluster-id 1 --o-trimmed seqs_its_extracted.qza && qiime demux summarize --i-data seqs_its_extracted.qza --o-visualization seqs_its_extracted.qzv && echo "**Summary completed at $(date).**"'
+        - 'cd /biovol && echo "**Initializing environment on $(date)...**" && conda install -c bioconda -c conda-forge ITSxpress --verbose && qiime dev refresh-cache && echo "**Processing beginning on $(date)...**" && qiime itsxpress trim-pair-output-unmerged --verbose --i-per-sample-sequences seqs_demux_filt.qza --p-region ITS1 --p-threads 0 --p-cluster-id 1 --o-trimmed seqs_demux_trimmed.qza && qiime demux summarize --i-data seqs_demux_trimmed.qza --o-visualization seqs_demux_trimmed.qzv && echo "**Summary completed at $(date).**"'
         resources:
           limits:
             memory: 250Gi

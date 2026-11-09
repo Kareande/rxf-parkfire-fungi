@@ -15,7 +15,7 @@ spec:
         command:
         - /bin/sh
         - -c
-        - 'cd /biovol && echo "**Processing beginning on $(date)...**" && qiime cutadapt trim-paired --i-demultiplexed-sequences seqs_demux.qza --p-front-f CTTGGTCATTTAGAGGAAGTAA --p-front-r GCTGCGTTCTTCATCGATGC --p-error-rate 0.13 --p-cores 8 --p-discard-untrimmed --o-trimmed-sequences cutadapt/seqs_demux_trimmed.qza && qiime demux summarize --i-data cutadapt/seqs_demux_trimmed.qza --o-visualization cutadapt/seqs_demux_trimmed.qzv && echo "**Summary completed at $(date).**"'
+        - 'cd /biovol && echo "**Processing beginning on $(date)...**" && qiime cutadapt trim-paired --i-demultiplexed-sequences seqs_demux.qza --p-front-f CTTGGTCATTTAGAGGAAGTAA --p-front-r GCTGCGTTCTTCATCGATGC --p-error-rate 0.13 --p-cores 0 --p-discard-untrimmed --o-trimmed-sequences cutadapt/seqs_demux_trimmed.qza --o-stats cutadapt/stats_cutadapt_sgl.qza && qiime demux summarize --i-data cutadapt/seqs_demux_trimmed.qza --o-visualization cutadapt/seqs_demux_trimmed.qzv && echo "**Summary completed at $(date).**"'
         resources:
           limits:
             memory: 250Gi
