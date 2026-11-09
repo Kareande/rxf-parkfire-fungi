@@ -1,0 +1,35 @@
+# job-cutadapt.yaml
+# This job runs the cutadapt plugin to trim the primers from the imported sequence data
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cutadapt-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      containers:
+      - name: job-pod
+        image: quay.io/qiime2/qiime2-workshop:2026.10  # Verify that this is the correct qiime2 version
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Processing beginning on $(date)...**" && qiime cutadapt trim-paired --i-demultiplexed-sequences seqs_demux.qza --p-front-f CTTGGTCATTTAGAGGAAGTAA --p-front-r GCTGCGTTCTTCATCGATGC --p-error-rate 0.13 --p-cores 8 --p-discard-untrimmed --o-trimmed-sequences cutadapt/seqs_demux_trimmed.qza && qiime demux summarize --i-data cutadapt/seqs_demux_trimmed.qza --o-visualization cutadapt/seqs_demux_trimmed.qzv && echo "**Summary completed at $(date).**"'
+        resources:
+          limits:
+            memory: 250Gi
+            cpu: 5
+            ephemeral-storage: 250Gi
+          requests:
+            memory: 250Gi
+            cpu: 5
+            ephemeral-storage: 250Gi
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

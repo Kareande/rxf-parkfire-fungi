@@ -40,7 +40,7 @@ kubectl delete pod qiime2-pod
 #----------------------------------------------------------------------------------------------------------------------#
 #--------------------------------------------- DOWNLOADING SEQUENCE DATA ----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-download-seqs.yaml
+# kubectl create -f Qiime/YAMLs/job-download-seqs.yaml
 
 ## Download data from UC Davis
 # Wget download link provided on Bioshare
@@ -51,7 +51,7 @@ wget -r --level=10 -nH -nc --cut-dirs=3 --no-parent --reject "wget_index.html" -
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- IMPORTING DATA TO QMIIE2 ----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-import.yaml
+# kubectl create -f Qiime/YAMLs/job-import.yaml
 
 ## Import data into quiime2
 qiime tools import \
@@ -66,7 +66,7 @@ qiime demux summarize \
   --o-visualization seqs_demux.qzv
 
 ## Download above summary for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv seqs_demux.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv Qiime/visualizations/seqs_demux.qzv
 
 ## NOTES: 
 # Interactive quality plot for demux seqs shows steady quality in forward reads (no truncation necessary),
@@ -77,7 +77,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux.qzv seqs_dem
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------- FILTERING BY READS -------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-filter.yaml
+# kubectl create -f Qiime/YAMLs/job-filter.yaml
 
 ## Export to a TSV, this contains the counts
 qiime tools export \
@@ -99,7 +99,7 @@ qiime demux summarize \
   --o-visualization seqs_demux_filt.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux_filt.qzv seqs_demux_filt.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux_filt.qzv Qiime/visualizations/seqs_demux_filt.qzv
 
 ## NOTE:
 # Filtering of low read samples was necessary in order to use ITSxpress. Alternatively,
@@ -109,13 +109,13 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_demux_filt.qzv seq
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------- EXTRACT ITS REGION -------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-itsxpress.yaml
+# kubectl create -f Qiime/YAMLs/job-itsxpress.yaml
 
 ## Install itsxpress
 conda install -c bioconda -c conda-forge ITSxpress
 qiime dev refresh-cache
 
-## Extract ITS sequencing from raw data, no clustering
+## Extract ITS sequencing from raw data
 qiime itsxpress trim-pair-output-unmerged --verbose \
 --i-per-sample-sequences seqs_demux_filt.qza \
 --p-region ITS1 \
@@ -129,7 +129,7 @@ qiime demux summarize \
   --o-visualization seqs_its_extracted.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv seqs_its_extracted.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv Qiime/visualizations/seqs_its_extracted.qzv
 
 ## NOTES: 
 # You can see evidence that the ITS1 region was extracted by looking at the trimmed seqs
@@ -139,7 +139,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_its_extracted.qzv 
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- QUALITY FILTER & DENOISE ----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-dada2-single.yaml
+# kubectl create -f Qiime/YAMLs/job-dada2-single.yaml
 
 ## Use dada2 to denoise, dereplicate, and filter chimeras
 qiime dada2 denoise-single \
@@ -167,9 +167,9 @@ qiime feature-table tabulate-seqs \
   --o-visualization seqs_asvs_sgl.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/stats_dada2_sgl.qzv stats_dada2_sgl.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl.qzv table_asvs_sgl.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl.qzv seqs_asvs_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/stats_dada2_sgl.qzv Qiime/visualizations/stats_dada2_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_asvs_sgl.qzv Qiime/visualizations/table_asvs_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl.qzv Qiime/visualizations/seqs_asvs_sgl.qzv
 
 ## NOTES:
 # For single, the lowest % that made it through filter was 93% (besides 3E7 which had 49%), while
@@ -182,7 +182,7 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_asvs_sgl.qzv seqs_
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------- TRAIN CLASSIFIER ON UNITE DATA -------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-training.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-training.yaml
 
 ## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
 kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_dynamic_s_19.02.2025.fasta
@@ -215,7 +215,7 @@ qiime feature-classifier fit-classifier-naive-bayes \
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- ASSIGN TAXONOMY TO ASV ------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-trained.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-trained.yaml
 
 ## Assign taxonomy to ASVs
 qiime feature-classifier classify-sklearn \
@@ -238,8 +238,8 @@ qiime taxa barplot \
   --o-visualization barplot_taxa_asvs_trained.qzv
 
 ## Download visualizations (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_asvs_trained.qzv taxa_asvs_trained.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_asvs_trained.qzv barplot_taxa_asvs_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_asvs_trained.qzv Qiime/visualizations/taxa_asvs_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_asvs_trained.qzv Qiime/visualizations/barplot_taxa_asvs_trained.qzv
 
 ## NOTE:
 # The classifier detected 46 mock ASVs at the genus level. The original mock sequences were nowhere in my dataset. Only one of my pos ctl made it
@@ -249,7 +249,8 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_asvs_train
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------------ CLUSTER -------------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-cluster-single.yaml
+# kubectl create -f Qiime/YAMLs/job-cluster97-single.yaml
+# kubectl create -f Qiime/YAMLs/job-cluster99-single.yaml
 
 ## Cluster on 97% identity using vsearch
 qiime vsearch cluster-features-de-novo \
@@ -275,14 +276,41 @@ qiime feature-table tabulate-seqs \
   --o-visualization seqs_otus97_sgl.qzv
 
 ## Download above summaries for visualization (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_otus97_sgl.qzv table_otus97_sgl.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_otus97_sgl.qzv seqs_otus97_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_otus97_sgl.qzv Qiime/visualizations/table_otus97_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_otus97_sgl.qzv Qiime/visualizations/seqs_otus97_sgl.qzv
 
+## Cluster on 99% identity using vsearch
+qiime vsearch cluster-features-de-novo \
+--i-sequences seqs_asvs_sgl.qza \
+--i-table table_asvs_sgl.qza  \
+--p-perc-identity 0.99 \
+--p-threads 0 \
+--o-clustered-table table_otus99_sgl.qza \
+--o-clustered-sequences seqs_otus99_sgl.qza
+
+## Get sample and feature seq freq and summary stats
+qiime feature-table summarize \
+  --i-table table_otus99_sgl.qza \
+  --m-metadata-file metadata.tsv \
+  --o-feature-frequencies feat_freq_otus99_sgl.qza \
+  --o-sample-frequencies smpl_freq_otus99_sgl.qza \
+  --o-summary table_otus99_sgl.qzv
+
+## Visualize feature IDs to sequences w/ BLAST links
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus99_sgl.qza \
+  --m-metadata-file feat_freq_otus99_sgl.qza \
+  --o-visualization seqs_otus99_sgl.qzv
+
+## Download above summaries for visualization (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/table_otus99_sgl.qzv Qiime/visualizations/table_otus99_sgl.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/seqs_otus99_sgl.qzv Qiime/visualizations/seqs_otus99_sgl.qzv
 
 #----------------------------------------------------------------------------------------------------------------------#
-#-------------------------------------- TRAIN CLASSIFIER ON 97% CLUST UNITE DATA --------------------------------------#
+#---------------------------------------- TRAIN CLASSIFIER ON CLUST UNITE DATA ----------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-training-clust.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-training-clust97.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-training-clust99.yaml
 
 ## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
 kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_97_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_97_s_19.02.2025.fasta
@@ -307,6 +335,29 @@ qiime feature-classifier fit-classifier-naive-bayes \
   --i-reference-taxonomy unite_taxonomy_97.qza \
   --o-classifier classifier_97.qza
 
+## Upload latest UNITE data and associated taxonomy file (w/ mock community data added)
+kubectl cp sh_qiime_release_s_19.02.2025\sh_refs_qiime_ver10_99_s_19.02.2025.fasta qiime2-pod:\biovol\sh_refs_qiime_ver10_99_s_19.02.2025.fasta
+kubectl cp sh_qiime_release_s_19.02.2025\sh_taxonomy_qiime_ver10_99_s_19.02.2025.txt qiime2-pod:\biovol\sh_taxonomy_qiime_ver10_99_s_19.02.2025.txt
+
+## Import latest UNITE data
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path sh_refs_qiime_ver10_99_s_19.02.2025.fasta \
+  --output-path unite_99.qza
+
+## Import associated UNITE taxonomy file
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path sh_taxonomy_qiime_ver10_99_s_19.02.2025.txt \
+--output-path unite_taxonomy_99.qza
+
+## Train classifier
+qiime feature-classifier fit-classifier-naive-bayes \
+  --i-reference-reads unite_99.qza \
+  --i-reference-taxonomy unite_taxonomy_99.qza \
+  --o-classifier classifier_99.qza
+
 ## NOTE:
 # your reference database should contain sequences obtained with the same primers you used
 # to generate the amplicons in your experiment.
@@ -315,9 +366,12 @@ qiime feature-classifier fit-classifier-naive-bayes \
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- ASSIGN TAXONOMY TO OTU ------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f job-classifier-trained-clust.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-trained-clust97.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-trained-clust97dyn.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-trained-clust99.yaml
+# kubectl create -f Qiime/YAMLs/job-classifier-trained-clust99dyn.yaml
 
-## Assign taxonomy to OTUs
+## Assign taxonomy to 97% clustered OTUs using 97% classifier
 qiime feature-classifier classify-sklearn \
   --i-classifier classifier_97.qza \
   --i-reads seqs_otus97_sgl.qza \
@@ -332,18 +386,102 @@ qiime feature-table tabulate-seqs \
 
 ## Create barplot
 qiime taxa barplot \
-  --i-table table_otus97_sgl.qza  \ # DOES NOT EXIST
+  --i-table table_otus97_sgl.qza \
   --i-taxonomy taxa_otus97_trained.qza \
   --m-metadata-file metadata.tsv \
   --o-visualization barplot_taxa_otus97_trained.qzv
 
 ## Download visualizations (https://view.qiime2.org/)
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97_trained.qzv taxa_otus97_trained.qzv
-kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97_trained.qzv barplot_taxa_otus97_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97_trained.qzv Qiime/visualizations/taxa_otus97_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97_trained.qzv Qiime/visualizations/barplot_taxa_otus97_trained.qzv
 
 ## NOTE:
-# The classifier detected ?? mock OTUs at the ??? level. The original mock sequences ??? in my dataset. Only one of my pos ctl made it
-# through quality filtering, but some mock OTU were detected in up to ??? other samples. I copied/pasted from the .qza file all mock OTUs.
+# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+
+## Assign taxonomy to 97% clustered OTUs using dynamic classifier
+qiime feature-classifier classify-sklearn \
+  --i-classifier classifier.qza \
+  --i-reads seqs_otus97_sgl.qza \
+  --o-classification taxa_otus97dyn_trained.qza
+
+## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus97_sgl.qza \
+  --i-taxonomy taxa_otus97dyn_trained.qza \
+  --m-metadata-file feat_freq_otus97_sgl.qza \
+  --o-visualization taxa_otus97dyn_trained.qzv
+
+## Create barplot
+qiime taxa barplot \
+  --i-table table_otus97_sgl.qza \
+  --i-taxonomy taxa_otus97dyn_trained.qza \
+  --m-metadata-file metadata.tsv \
+  --o-visualization barplot_taxa_otus97dyn_trained.qzv
+
+## Download visualizations (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus97dyn_trained.qzv Qiime/visualizations/taxa_otus97dyn_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus97dyn_trained.qzv Qiime/visualizations/barplot_taxa_otus97dyn_trained.qzv
+
+## NOTE:
+# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+
+## Assign taxonomy to 99% clust OTUs using 99% classifier
+qiime feature-classifier classify-sklearn \
+  --i-classifier classifier_99.qza \
+  --i-reads seqs_otus99_sgl.qza \
+  --o-classification taxa_otus99_trained.qza
+
+## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus99_sgl.qza \
+  --i-taxonomy taxa_otus99_trained.qza \
+  --m-metadata-file feat_freq_otus99_sgl.qza \
+  --o-visualization taxa_otus99_trained.qzv
+
+## Create barplot
+qiime taxa barplot \
+  --i-table table_otus99_sgl.qza \
+  --i-taxonomy taxa_otus99_trained.qza \
+  --m-metadata-file metadata.tsv \
+  --o-visualization barplot_taxa_otus99_trained.qzv
+
+## Download visualizations (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus99_trained.qzv Qiime/visualizations/taxa_otus99_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus99_trained.qzv Qiime/visualizations/barplot_taxa_otus99_trained.qzv
+
+## NOTE:
+# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
+
+## Assign taxonomy to 99% clust OTUs using dynamic classifier
+qiime feature-classifier classify-sklearn \
+  --i-classifier classifier.qza \
+  --i-reads seqs_otus99_sgl.qza \
+  --o-classification taxa_otus99dyn_trained.qza
+
+## Visualize feature IDs and taxonomy w/ seqs linked to BLAST
+qiime feature-table tabulate-seqs \
+  --i-data seqs_otus99_sgl.qza \
+  --i-taxonomy taxa_otus99dyn_trained.qza \
+  --m-metadata-file feat_freq_otus99_sgl.qza \
+  --o-visualization taxa_otus99dyn_trained.qzv
+
+## Create barplot
+qiime taxa barplot \
+  --i-table table_otus99_sgl.qza \
+  --i-taxonomy taxa_otus99dyn_trained.qza \
+  --m-metadata-file metadata.tsv \
+  --o-visualization barplot_taxa_otus99dyn_trained.qzv
+
+## Download visualizations (https://view.qiime2.org/)
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/taxa_otus99dyn_trained.qzv Qiime/visualizations/taxa_otus99dyn_trained.qzv
+kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/barplot_taxa_otus99dyn_trained.qzv Qiime/visualizations/barplot_taxa_otus99dyn_trained.qzv
+
+## NOTE:
+# The classifier detected 8 mock OTUs at the genus level. The original mock sequences were not in my dataset. Only one of my pos ctl made it
+# through quality filtering, but some mock OTU were detected in up to 47 other samples. I copied/pasted from the .qza file all mock OTUs.
 
 
 #----------------------------------------------------------------------------------------------------------------------#

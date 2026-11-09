@@ -7,7 +7,7 @@ metadata:
 spec:
   containers:
   - name: biopod            # Name of container, not important
-    image: quay.io/qiime2/qiime2:2026.10       # Image name pulled from DockerHub
+    image: quay.io/qiime2/qiime2-workshop:2026.10       # Image name pulled from DockerHub
     command: ["sh", "-c", "sleep infinity"]   # commands to open shell and keep container running indefinitely
     resources:
       limits:

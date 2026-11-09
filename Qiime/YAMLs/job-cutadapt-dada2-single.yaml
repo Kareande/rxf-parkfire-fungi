@@ -1,0 +1,35 @@
+# job-cutadapt-dada2-single.yaml
+# This job runs the DADA2 plugin to denoise the ITSxpress-trimmed sequence data and summarize it into visualizations
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dada2-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      containers:
+      - name: job-pod
+        image: quay.io/qiime2/qiime2-workshop:2026.10
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Denoising beginning on $(date)...**" && qiime dada2 denoise-single --i-demultiplexed-seqs cutadapt/seqs_demux_trimmed.qza --p-trim-left 0 --p-trunc-len 0 --o-representative-sequences cutadapt/seqs_asvs_sgl.qza --o-table cutadapt/table_asvs_sgl.qza --o-denoising-stats cutadapt/stats_dada2_sgl.qza --o-base-transition-stats cutadapt/stats_dada2_btrans_sgl.qza --p-n-threads 0 && echo "**Denoising complete on $(date). Now summarizing...**" && qiime metadata tabulate --m-input-file cutadapt/stats_dada2_sgl.qza --o-visualization cutadapt/stats_dada2_sgl.qzv && echo "**Summary ongoing on $(date)...**" && qiime feature-table summarize --i-table cutadapt/table_asvs_sgl.qza --m-metadata-file metadata.tsv --o-feature-frequencies cutadapt/feat_freq_asvs_sgl.qza --o-sample-frequencies cutadapt/smpl_freq_asvs_sgl.qza --o-summary cutadapt/table_asvs_sgl.qzv && echo "**Summary ongoing on $(date)...**" && qiime feature-table tabulate-seqs --i-data cutadapt/seqs_asvs_sgl.qza --o-visualization cutadapt/seqs_asvs_sgl.qzv && echo "**Summary complete on $(date).**"'
+        resources:
+          limits:
+            memory: 250Gi
+            cpu: 8
+          requests:
+            memory: 250Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never
+
+  

@@ -1,0 +1,34 @@
+# job-classifier-trained-clust99dyn.yaml
+# This job uses a trained UNITE classifier to assign taxonoy to the sequences
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: classifier-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 4
+#  parallelism: 1
+  template:
+    spec:
+      containers:
+      - name: classifier-job-pod
+        image: quay.io/qiime2/qiime2:2026.4   # Verify this is the correct version for the classifier job
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Assigning taxonomy on $(date)...**" && qiime feature-classifier classify-sklearn --i-classifier classifier.qza --i-reads seqs_otus99_sgl.qza --o-classification taxa_otus99dyn_trained.qza && echo "**Taxonomy assigned on $(date). Visualizing taxonomy...**" && qiime feature-table tabulate-seqs --i-data seqs_otus99_sgl.qza --i-taxonomy taxa_otus99dyn_trained.qza --m-metadata-file feat_freq_otus99_sgl.qza --o-visualization taxa_otus99dyn_trained.qzv && echo "**Visualization complete on $(date). Creating barplot...**" && qiime taxa barplot --i-table table_otus99_sgl.qza --i-taxonomy taxa_otus99dyn_trained.qza --m-metadata-file metadata.tsv --o-visualization barplot_taxa_otus99dyn_trained.qzv && echo "**Barplot complete on $(date).**"'
+        resources:
+          limits:
+            memory: 256Gi
+            cpu: 8
+          requests:
+            memory: 256Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

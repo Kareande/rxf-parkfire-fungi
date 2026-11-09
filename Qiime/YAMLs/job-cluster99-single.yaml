@@ -1,0 +1,34 @@
+# job-cluster99-single.yaml
+# This job runs VSEARCH to cluster the DADA2-denoised sequence data and summarize into visualizations
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-job
+  namespace: grad-erth-wmis-kranderson4
+spec:
+  backoffLimit: 4
+#  parallelism: 1
+  template:
+    spec:
+      containers:
+      - name: cluster-job-pod
+        image: quay.io/qiime2/qiime2:2026.7
+        command:
+        - /bin/sh
+        - -c
+        - 'cd /biovol && echo "**Clustering beginning on $(date)...**" && qiime vsearch cluster-features-de-novo --i-sequences seqs_asvs_sgl.qza --i-table table_asvs_sgl.qza --p-perc-identity 0.99 --p-threads 0 --o-clustered-table table_otus99_sgl.qza --o-clustered-sequences seqs_otus99_sgl.qza && echo "**Clustering complete on $(date). Now summarizing...**" && qiime feature-table summarize --i-table table_otus99_sgl.qza --m-metadata-file metadata.tsv --o-feature-frequencies feat_freq_otus99_sgl.qza --o-sample-frequencies smpl_freq_otus99_sgl.qza --o-summary table_otus99_sgl.qzv && echo "**Summarizing continued on $(date)...**" && qiime feature-table tabulate-seqs --i-data seqs_otus99_sgl.qza --m-metadata-file feat_freq_otus99_sgl.qza --o-visualization seqs_otus99_sgl.qzv && echo "**Summary complete on $(date).**"'
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: 8
+          requests:
+            memory: 64Gi
+            cpu: 8
+        volumeMounts:
+        - mountPath: /biovol
+          name: biovol
+      volumes:
+      - name: biovol
+        persistentVolumeClaim:
+          claimName: rxfungi-vol
+      restartPolicy: Never

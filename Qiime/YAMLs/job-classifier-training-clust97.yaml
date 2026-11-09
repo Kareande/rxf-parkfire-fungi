@@ -1,4 +1,4 @@
-# job-classifier-training-clust.yaml
+# job-classifier-training-clust97.yaml
 # This job trains a UNITE classifier
 apiVersion: batch/v1
 kind: Job

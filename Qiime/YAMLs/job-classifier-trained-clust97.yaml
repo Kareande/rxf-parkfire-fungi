@@ -1,4 +1,4 @@
-# job-classifier-trained-clust.yaml
+# job-classifier-trained-clust97.yaml
 # This job uses a trained UNITE classifier to assign taxonoy to the sequences
 apiVersion: batch/v1
 kind: Job

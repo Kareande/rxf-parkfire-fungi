@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
       - name: import-job-pod
-        image: quay.io/qiime2/qiime2:2026.7  # Verify that this is the correct qiime2 version (https://library.qiime2.org/quickstart/qiime2) for ITSxpress (https://github.com/usda-ars-gbru/itsxpress)
+        image: quay.io/qiime2/qiime2-workshop:2026.10  # Verify that this is the correct qiime2 version (https://library.qiime2.org/quickstart/qiime2) for ITSxpress (https://github.com/usda-ars-gbru/itsxpress)
         command:
         - /bin/sh
         - -c

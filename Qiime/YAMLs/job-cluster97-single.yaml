@@ -1,4 +1,4 @@
-# job-cluster-single.yaml
+# job-cluster97-single.yaml
 # This job runs VSEARCH to cluster the DADA2-denoised sequence data and summarize into visualizations
 apiVersion: batch/v1
 kind: Job
