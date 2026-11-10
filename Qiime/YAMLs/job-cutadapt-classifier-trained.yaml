@@ -16,7 +16,7 @@ spec:
         command:
         - /bin/sh
         - -c
-        - 'cd /biovol && echo "**Assigning taxonomy on $(date)...**" && qiime feature-classifier classify-sklearn --i-classifier classifier.qza --i-reads cutadapt/asvs_dada2_single.qza --o-classification cutadapt/taxa_asvs_trained.qza && echo "**Taxonomy assigned on $(date). Visualizing taxonomy...**" && qiime feature-table tabulate-seqs --i-data cutadapt/asvs_dada2_single.qza --i-taxonomy cutadapt/taxa_asvs_trained.qza --m-metadata-file cutadapt/feat_freq_dada2_single.qza --o-visualization cutadapt/taxa_asvs_trained.qzv && echo "**Visualization complete on $(date). Creating barplot...**" && qiime taxa barplot --i-table cutadapt/table_dada2_single.qza --i-taxonomy cutadapt/taxa_asvs_trained.qza --m-metadata-file metadata.tsv --o-visualization cutadapt/barplot_taxa_asvs_trained.qzv && echo "**Barplot complete on $(date).**"'
+        - 'cd /biovol && echo "**Assigning taxonomy on $(date)...**" && qiime feature-classifier classify-sklearn --i-classifier classifier.qza --i-reads cutadapt/seqs_asvs_sgl.qza --o-classification cutadapt/taxa_asvs_trained.qza && echo "**Taxonomy assigned on $(date). Visualizing taxonomy...**" && qiime feature-table tabulate-seqs --i-data cutadapt/seqs_asvs_sgl.qza --i-taxonomy cutadapt/taxa_asvs_trained.qza --m-metadata-file cutadapt/feat_freq_asvs_sgl.qza --o-visualization cutadapt/taxa_asvs_trained.qzv && echo "**Visualization complete on $(date). Creating barplot...**" && qiime taxa barplot --i-table cutadapt/table_asvs_sgl.qza --i-taxonomy cutadapt/taxa_asvs_trained.qza --m-metadata-file metadata.tsv --o-visualization cutadapt/barplot_taxa_asvs_trained.qzv && echo "**Barplot complete on $(date).**"'
         resources:
           limits:
             memory: 256Gi

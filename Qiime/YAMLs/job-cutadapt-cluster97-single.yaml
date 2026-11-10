@@ -3,7 +3,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: cluster-job
+  name: cluster97-job
   namespace: grad-erth-wmis-kranderson4
 spec:
   backoffLimit: 4

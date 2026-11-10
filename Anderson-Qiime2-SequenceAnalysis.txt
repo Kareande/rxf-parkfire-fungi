@@ -1,7 +1,7 @@
 # KAT ANDERSON AVITI SEQUENCE ANALYSIS WITH QIIME2 PIPELINE
 # Code is written for a Windows Subsystem for Linux (WSL) environment
 # Paired with .YAML files for use with National Research Platform (NRP)
-# Updated 2026: QIIME2 2026.7, conda 26.5.3, WSL 2.7.8.0
+# Updated 2026: QIIME2 2026.10, conda 26.9.4, WSL 2.7.8.0
 
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------- PREPPING WORKSPACE -------------------------------------------------#

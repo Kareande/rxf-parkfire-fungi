@@ -3,7 +3,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: classifier-job
+  name: classifier99-job
   namespace: grad-erth-wmis-kranderson4
 spec:
   backoffLimit: 4

@@ -182,7 +182,7 @@ qiime feature-classifier fit-classifier-naive-bayes \
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- ASSIGN TAXONOMY TO ASV ------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained.yaml ***************
+# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained.yaml
 
 ## Assign taxonomy to ASVs
 qiime feature-classifier classify-sklearn \
@@ -217,8 +217,8 @@ kubectl cp grad-erth-wmis-kranderson4/qiime2-pod:/biovol/cutadapt/barplot_taxa_a
 #----------------------------------------------------------------------------------------------------------------------#
 #------------------------------------------------------ CLUSTER -------------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f Qiime/YAMLs/job-cutadapt-cluster97-single.yaml ****************
-# kubectl create -f Qiime/YAMLs/job-cutadapt-cluster99-single.yaml ****************
+# kubectl create -f Qiime/YAMLs/job-cutadapt-cluster97-single.yaml
+# kubectl create -f Qiime/YAMLs/job-cutadapt-cluster99-single.yaml
 
 ## Cluster on 97% identity using vsearch
 qiime vsearch cluster-features-de-novo \
@@ -350,10 +350,10 @@ qiime feature-classifier fit-classifier-naive-bayes \
 #----------------------------------------------------------------------------------------------------------------------#
 #---------------------------------------------- ASSIGN TAXONOMY TO OTU ------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
-# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust97.yaml ***************
-# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust97dyn.yaml ***************
-# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust99.yaml ***************
-# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust99dyn.yaml ***************
+# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust97.yaml
+# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust97dyn.yaml
+# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust99.yaml
+# kubectl create -f Qiime/YAMLs/job-cutadapt-classifier-trained-clust99dyn.yaml
 
 ## Assign taxonomy to 97% clustered OTUs using 97% classifier
 qiime feature-classifier classify-sklearn \

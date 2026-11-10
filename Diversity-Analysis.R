@@ -690,32 +690,6 @@ ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_ty
 #--------------------------------------------- BETA DIVERSITY; NMDS PLOT ----------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 
-## Create freq matrix
-frq_mat <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
-  as.data.frame() |>
-  rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>      # rename columns to not begin w/ integer
-  rename(ASV = "sample_#OTU ID") |>                             # rename ASV column to ASV
-  pivot_longer(-ASV) |>
-  mutate(value = as.integer(value)) |>
-  rename(subsite = "name", name = "ASV") |>                     # rename ASV column to ASV
-  group_by(name) |>
-  mutate(total = sum(value)) |>
-  filter(total != 0) |>
-  ungroup() |>
-  select(subsite, name, value) |>
-  pivot_wider(id_cols = subsite) |>
-  column_to_rownames("subsite")
-frq_mat <- as.matrix(frq_mat)
-frq_mat[1:20, 1:2]
-
-## Generate Bray Curtis distance matrix
-bray <- vegdist(frq_mat, method = "bray")
-str(bray)                         # look at structure
-samples <- attr(bray, "Labels")   # access labels
-bray_tbl <- as_tibble(bray) |>
-  cbind(samples)
-bray_tbl
-
 ## Create function to extract metadata from sample name
 sample_lookup <- function(df, sampleid) {
   df |>
@@ -747,11 +721,43 @@ sample_lookup <- function(df, sampleid) {
                                          "RxF + Wildfire, July")))
 }
 
+## Create freq matrix
+freq <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
+  as.data.frame() |>
+  rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>      # rename columns to not begin w/ integer
+  rename(ASV = "sample_#OTU ID") |>                             # rename ASV column to ASV
+  pivot_longer(-ASV) |>
+  mutate(value = as.integer(value)) |>
+  rename(sample = "name", name = "ASV") |>                     # rename ASV column to ASV
+  group_by(name) |>
+  mutate(total = sum(value)) |>
+  filter(total != 0) |>
+  ungroup() |>
+  sample_lookup(sampleid = "sample") |>
+  select(-total, -subsite) |>
+  pivot_wider(names_from = "name", values_from = "value", values_fill = 0)
+freq_meta <-  freq |>
+  select(sample, site, month, treatment, pair, tmntmonth)
+frq_mat <- freq |>
+  select(-site, -month, - treatment, -pair, -tmntmonth) |>
+  column_to_rownames("sample") |>
+  as.matrix()
+frq_mat[1:20, 1:2]
+
+## Generate Bray Curtis distance matrix
+bray <- vegdist(frq_mat, method = "bray")
+str(bray)                         # look at structure
+samples <- attr(bray, "Labels")   # access labels
+bray_tbl <- as_tibble(bray) |>
+  cbind(samples)
+bray_tbl
+
 ## NMDS ordination using Bray-Curtis distance matrix
 set.seed(10192026)
-nmdsb <- metaMDS(bray)
+nmdsb <- metaMDS(bray, k = 2, try = 20, trymax = 100)
+stressb <- nmdsb$stress
 metric <- "Bray Curtis Distance"
-captit <- "Matrix Used: <i>BrayCurtis</i>,Stress: <i>0.2119787</i>"
+captit <- paste0("Method: <i>", metric, "</i>, Stress: <i>", stressb, "</i>")
 plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
 ccap <- "#363535"
 plt_type <- "ordntn"
@@ -825,13 +831,25 @@ meta_nmdsb |>
 ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Test variation with ADONIS
-blc <- with(meta_nmdsb, how(nperm = 999, blocks = site))
-adonis2(bray ~ treatment*month, data = meta_nmdsb, permutations = blc)
-# or
-ord <- dbrda(bray ~ treatment*month + Condition(site), data = meta_nmdsb, method = "bray") 
-anova(ord, permutations = blc )`
+set.seed(10192026)
+test <- adonis2(bray ~ treatment, data = freq_meta)
+test$"Pr(>F)"[1] #0.453, null accepted
 
-## Generate Bray Curtis distance matrix
+set.seed(10192026)
+test <- adonis2(bray ~ month, data = freq_meta, permutations = 1e4)
+test$"Pr(>F)"[1] #0.06349365, null accepted
+
+set.seed(10192026)
+test <- adonis2(bray ~ tmntmonth, data = freq_meta, permutations = 1e4)
+test$"Pr(>F)"[1] #0.04019598*, null rejected
+
+set.seed(10192026)
+test <- betadisper(bray, freq_meta$tmntmonth) |>
+  permutest(pairwise = TRUE) #RxF + Wildfire, January, RxF + Wildfire, July 0.042735*
+test$pairwise$observed[unlist(test$pairwise$observed) < 0.05]
+
+
+## Generate Jaccard distance matrix
 jacc <- vegdist(frq_mat, method = "jaccard")
 str(jacc)                         # look at structure
 samples <- attr(jacc, "Labels")   # access labels
@@ -839,17 +857,18 @@ jacc_tbl <- as_tibble(jacc) |>
   cbind(samples)
 jacc_tbl
 
-## NMDS ordination using Bray-Curtis distance matrix
+## NMDS ordination using Jaccard distance matrix
 set.seed(10192026)
-nmdsj <- metaMDS(jacc)
+nmdsj <- metaMDS(jacc, k = 2, try = 20, trymax = 100)
+stressj <- nmdsj$stress
 metric <- "Jaccard Distance"
-captit <- "Matrix Used: <i>Jaccard</i>,Stress: <i>0.2119787</i>"
-plttit <- "NMDS Ordination Plot for Bray Curtis Distance"
+captit <- paste0("Method: <i>", metric, "</i>, Stress: <i>", stressj, "</i>")
+plttit <- "NMDS Ordination Plot for Jaccard Distance"
 ccap <- "#363535"
 plt_type <- "ordntn"
 
 ## Plot NDMS ordination colored by treatment and month
-meta_nmdsj <- scores(nmdsj) |>   # by tmntmonth
+meta_nmdsj <- scores(nmdsj) |>
   as_tibble(rownames = "samples") |>
   sample_lookup(sampleid = "samples")
 centroid <- meta_nmdsj |>
@@ -877,10 +896,25 @@ meta_nmdsj |>
 ggsave(paste0("figures/", "ASV_", str_replace_all(metric, " ", "_"), "_", plt_type, ".png"))
 
 ## Test variation with ADONIS
+set.seed(10192026)
+test <- adonis2(jacc ~ treatment, data = freq_meta)
+test$"Pr(>F)"[1] #0.505, null accepted
+
+set.seed(10192026)
+test <- adonis2(jacc ~ month, data = freq_meta, permutations = 1e4)
+test$"Pr(>F)"[1] #0.0729927, null accepted
+
+set.seed(10192026)
+test <- adonis2(jacc ~ tmntmonth, data = freq_meta, permutations = 1e4)
+test$"Pr(>F)"[1] #0.03849615*, null rejected
+
+set.seed(10192026)
+test <- betadisper(jacc, freq_meta$tmntmonth) |>
+  permutest(pairwise = TRUE) #RxF + Wildfire, January, RxF + Wildfire, July 0.03955806*
+test$pairwise$observed[unlist(test$pairwise$observed) < 0.05]
 
 ## Cannot compare at the subsite reolution b/c cannot match the 6 and 12mo samples because some are missing, but
 # also the labeling mishap. So, can only compare at the site level by taking the mean for each site.
-
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -1012,3 +1046,27 @@ mice_dist %>%
 #-------------------------------------------------- DISTANCES HEAT MAP ------------------------------------------------#
 #----------------------------------------------------------------------------------------------------------------------#
 #inspired by https://youtu.be/3iOTGaWQZp4?si=O29mkcGqjXHdx2NC
+
+
+
+
+#----------------------------------------------------------------------------------------------------------------------#
+#-------------------------------------------------- GAMMA DIVERSITY ---------------------------------------------------#
+#----------------------------------------------------------------------------------------------------------------------#
+#https://www.youtube.com/watch?v=4JDJuMe9yFI
+
+abnd_tbl <- read.delim("data/rarified_feat_freq_full.tsv", sep = "\t", check.names = FALSE, skip = 1) |>
+  as.data.frame() |>
+  rename_with(~ paste0("sample_", .x, recycle0 = TRUE)) |>      # rename columns to not begin w/ integer
+  rename(ASV = "sample_#OTU ID") |>                             # rename ASV column to ASV
+  pivot_longer(-ASV) |>
+  mutate(value = as.integer(value)) |>
+  rename(subsite = "name", abnd = "value") |>
+  sample_lookup(sampleid = "subsite")
+div_sub <- abnd_tbl |>
+  summarise(.by = subsite, shn = diversity(abnd, index = "shannon"), smp = diversity(abnd, index = "simpson"))
+avg_alpha <- div_sub |>
+  summarize(avg.shn = mean(shn), avg.smp = mean(smp))
+gamma_sub <- abnd_tbl |>
+  summarise(shn = diversity(abnd, index = "shannon"), smp = diversity(abnd, index = "simpson"))
+beta_sub <- gamma_sub / avg_alpha
